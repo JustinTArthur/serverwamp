@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import typing
 from collections import Mapping, Sequence
 from enum import IntEnum, unique
 from json import dumps as serialize
@@ -171,19 +170,65 @@ class WAMPRequest:
 
 
 @attr.s(frozen=True, slots=True)
+class WAMPSubscribeRequest(WAMPRequest):
+    options: Mapping = attr.ib()
+    uri: str = attr.ib()
+
+
+@attr.s(frozen=True, slots=True)
+class WAMPSubscribeResponse(WAMPRequest):
+    request: WAMPSubscribeRequest = attr.ib()
+    subscription: int = attr.ib()
+
+
+@attr.s(frozen=True, slots=True)
+class WAMPSubscribeErrorResponse:
+    request: WAMPSubscribeRequest = attr.ib()
+    uri: str = attr.ib()
+    details: Mapping = attr.ib(factory=dict)
+
+
+@attr.s(frozen=True, slots=True)
+class WAMPUnsubscribeRequest(WAMPRequest):
+    options: Mapping = attr.ib()
+    uri: str = attr.ib()
+
+
+@attr.s(frozen=True, slots=True)
+class WAMPUnsubscribeResponse:
+    request: WAMPUnsubscribeRequest = attr.ib()
+
+
+@attr.s(frozen=True, slots=True)
+class WAMPUnsubscribeErrorResponse:
+    request: WAMPUnsubscribeRequest = attr.ib()
+    uri: str = attr.ib()
+    details: Mapping = attr.ib(factory=dict)
+
+
+@attr.s(frozen=True, slots=True)
+class WAMPEvent:
+    subscription: int = attr.ib()
+    publication: int = attr.ib()
+    details: Mapping = attr.ib(factory=dict)
+    args: Sequence = attr.ib(default=())
+    kwargs: Mapping = attr.ib(factory=dict)
+
+
+@attr.s(frozen=True, slots=True)
 class WAMPRPCRequest(WAMPRequest):
     options: Mapping = attr.ib()
     uri: str = attr.ib()
-    args: typing.Optional[Sequence] = attr.ib(factory=tuple)
-    kwargs: typing.Optional[Mapping] = attr.ib(factory=dict)
+    args: Sequence = attr.ib(default=())
+    kwargs: Mapping = attr.ib(factory=dict)
 
 
 @attr.s(frozen=True, slots=True)
 class WAMPRPCResponse:
     request: WAMPRPCRequest = attr.ib()
     details: Mapping = attr.ib()
-    args: typing.Optional[Sequence] = attr.ib(factory=tuple)
-    kwargs: typing.Optional[Mapping] = attr.ib(factory=dict)
+    args: Sequence = attr.ib(default=())
+    kwargs: Mapping = attr.ib(factory=dict)
 
 
 @attr.s(frozen=True, slots=True)
@@ -191,5 +236,5 @@ class WAMPRPCErrorResponse(WAMPRPCResponse):
     request: WAMPRPCRequest = attr.ib()
     details: Mapping = attr.ib()
     uri: str = attr.ib()
-    args: typing.Optional[Sequence] = attr.ib(factory=tuple)
-    kwargs: typing.Optional[Mapping] = attr.ib(factory=dict)
+    args: Sequence = attr.ib(default=())
+    kwargs: Mapping = attr.ib(factory=dict)
