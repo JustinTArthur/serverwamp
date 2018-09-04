@@ -7,7 +7,7 @@ WAMP broker and WAMP dealer.
 ```python
 from aiohttp import web
 from aiohttp_server_wamp.adapters.aiohttp import WAMPApplication
-from aiohttp_server_wamp.rpc import RPCRouteTableDef, WAMPRPCErrorResponse
+from aiohttp_server_wamp.rpc import RPCRouteTableDef, RPCError
 
 rpc_routes = RPCRouteTableDef()
 
@@ -22,7 +22,7 @@ async def delete_document(document_id):
     if succeeded:
         return {'status': 'SUCCESS'}
     else:
-        return WAMPRPCErrorResponse(kwargs={'status': 'FAILURE'})
+        raise RPCError('wamp.error.delete_failed', {'status': 'FAILURE'})
     
 
 if __name__ == '__main__':

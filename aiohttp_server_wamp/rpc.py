@@ -39,13 +39,7 @@ class Router:
         try:
             result = await command(*rpc_request.args, **kwargs)
         except RPCError as error:
-            return WAMPRPCErrorResponse(
-                rpc_request,
-                uri=error.uri,
-                details={},
-                args=(),
-                kwargs={'message': error.msg}
-            )
+            return self._response_for_rpc_error(rpc_request, error)
         if isinstance(result, (WAMPRPCResponse, WAMPRPCErrorResponse)):
             return result
         elif isinstance(result, Mapping):
@@ -55,6 +49,37 @@ class Router:
             return WAMPRPCResponse(rpc_request, details={}, args=result)
         else:
             raise Exception("Uninterpretable response from RPC handler.")
+
+    @staticmethod
+    def _response_for_rpc_error(request, error):
+        args = error.error_arguments
+        if not args:
+            return WAMPRPCErrorResponse(request, uri=error.uri)
+        if isinstance(args, Mapping):
+            return WAMPRPCErrorResponse(
+                request,
+                uri=error.uri,
+                details={},
+                args=(),
+                kwargs=error.error_arguments
+            )
+        elif isinstance(args, Sequence):
+            return WAMPRPCErrorResponse(
+                request,
+                uri=error.uri,
+                details={},
+                args=error.error_arguments
+            )
+        elif isinstance(args, str):
+            return WAMPRPCErrorResponse(
+                request,
+                uri=error.uri,
+                details={},
+                kwargs={
+                    'message': error.error_arguments
+                }
+            )
+
 
 
 @attr.s(frozen=True, repr=False, slots=True)
@@ -106,6 +131,6 @@ class RPCRouteTableDef(Sequence):
 
 
 class RPCError(Exception):
-    def __init__(self, uri="wamp.error.rpc_error", msg=""):
+    def __init__(self, uri, error_arguments):
         self.uri = uri
-        self.msg = msg
+        self.error_arguments = error_arguments

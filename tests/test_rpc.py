@@ -28,7 +28,10 @@ def test_router_rpc_handling():
         return {'kwarg1': 1337, 'kwargs2': 'Test.', 'requestArg1': arg1}
 
     async def error_handler():
-        raise rpc.RPCError('wamp.error.sample_error_uri', "It just didn't work out.")
+        raise rpc.RPCError(
+            'wamp.error.sample_error_uri',
+            {'reason': "It just didn't work out."}
+        )
 
     router = rpc.Router()
     router.add_routes((
@@ -59,3 +62,4 @@ def test_router_rpc_handling():
     assert isinstance(response, WAMPRPCErrorResponse)
     assert response.request is request
     assert response.uri == 'wamp.error.sample_error_uri'
+    assert response.kwargs == {'reason': "It just didn't work out."}
