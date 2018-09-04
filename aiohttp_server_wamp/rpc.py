@@ -1,9 +1,13 @@
+from collections import Mapping
 from collections.abc import Sequence
 
 import attr
 
+from aiohttp_server_wamp.helpers import camel_to_snake
+from aiohttp_server_wamp.protocol import WAMPRPCErrorResponse, WAMPRPCResponse
 
-class WampNoSuchProcedureError(Exception):
+
+class WAMPNoSuchProcedureError(Exception):
     pass
 
 
@@ -18,7 +22,7 @@ class Router:
         try:
             handler = self.dispatch_table[uri]
         except KeyError:
-            raise WampNoSuchProcedureError('Procedure %s does not exist.', uri)
+            raise WAMPNoSuchProcedureError('Procedure %s does not exist.', uri)
         return handler
 
     def add_routes(self, routes):
@@ -28,6 +32,29 @@ class Router:
         """
         for route_obj in routes:
             route_obj.register(self)
+
+    async def handle_rpc_call(self, rpc_request) -> WAMPRPCResponse:
+        command = self.resolve(rpc_request.uri)
+        kwargs = {camel_to_snake(k): v for k, v in rpc_request.kwargs.items()}
+        try:
+            result = await command(*rpc_request.args, **kwargs)
+        except RPCError as error:
+            return WAMPRPCErrorResponse(
+                rpc_request,
+                uri=error.uri,
+                details={},
+                args=(),
+                kwargs={'message': error.msg}
+            )
+        if isinstance(result, (WAMPRPCResponse, WAMPRPCErrorResponse)):
+            return result
+        elif isinstance(result, Mapping):
+            return WAMPRPCResponse(
+                rpc_request, details={}, args=(), kwargs=result)
+        elif isinstance(result, Sequence):
+            return WAMPRPCResponse(rpc_request, details={}, args=result)
+        else:
+            raise Exception("Uninterpretable response from RPC handler.")
 
 
 @attr.s(frozen=True, repr=False, slots=True)
@@ -52,7 +79,7 @@ def route(uri, handler, **kwargs):
 
 
 class RPCRouteTableDef(Sequence):
-    """WAMP RPC route definition table. Similar to aiohttp.web.RouteTableDev"""
+    """WAMP RPC route definition table. Similar to aiohttp.web.RouteTableDef"""
     def __init__(self):
         self._items = []
 
@@ -76,3 +103,9 @@ class RPCRouteTableDef(Sequence):
             self._items.append(RPCRouteDef(uri, handler, kwargs))
             return handler
         return inner
+
+
+class RPCError(Exception):
+    def __init__(self, uri="wamp.error.rpc_error", msg=""):
+        self.uri = uri
+        self.msg = msg

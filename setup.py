@@ -1,8 +1,8 @@
 from setuptools import setup, find_packages
 import sys
 
-if sys.version_info < (3, 5, 3):
-    raise RuntimeError("aiohttp-server-wamp requires Python 3.5.3+")
+if sys.version_info < (3, 6):
+    raise RuntimeError("aiohttp-server-wamp requires Python 3.6+")
 
 setup(
     name='aiohttp-server-wamp',
@@ -14,7 +14,6 @@ setup(
     classifiers=(
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Development Status :: 3 - Alpha',
@@ -24,7 +23,7 @@ setup(
         'Topic :: Internet',
         'Framework :: AsyncIO',
     ),
-    install_requires=('aiohttp>=3.0.0',),
+    install_requires=('aiohttp>=3.0.0', 'attrs>=17.3.0'),
     keywords=(
         'WAMP', 'WebSockets', 'aiohttp', 'RPC', 'pubsub', 'broker', 'dealer'
     ),

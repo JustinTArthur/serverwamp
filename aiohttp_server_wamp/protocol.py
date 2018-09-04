@@ -1,9 +1,13 @@
 import asyncio
 import logging
+import typing
+from collections import Mapping, Sequence
 from enum import IntEnum, unique
 from json import dumps as serialize
 from json import loads as deserialize
 from random import randint
+
+import attr
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +16,8 @@ logger = logging.getLogger(__name__)
 class WAMPMsgType(IntEnum):
     HELLO = 1
     WELCOME = 2
+    ABORT = 3
+
     ERROR = 8
 
     CALL = 48
@@ -43,6 +49,22 @@ class WAMPProtocol:
 
         super(WAMPProtocol, self).__init__(*args, **kwargs)
 
+    def do_unimplemented(self, msg_type, request_id):
+        error_msg = (WAMPMsgType.ERROR, request_id, {},
+                     'wamp.error.not_implemented')
+        self.transport.schedule_msg(serialize(error_msg))
+
+    async def do_protocol_violation(self, msg=None):
+        if msg:
+            details = {'message': msg}
+        else:
+            details = {}
+
+        error_msg = (WAMPMsgType.ABORT, details,
+                     'wamp.error.protocol_violation')
+        await self.transport.schedule_msg(serialize(error_msg))
+        await self.transport.close()
+
     def do_welcome(self):
         welcome = (
             WAMPMsgType.WELCOME,
@@ -51,12 +73,12 @@ class WAMPProtocol:
                 'roles': {'broker': {}, 'dealer': {}}
             }
         )
-        self.loop.create_task(self.transport.send_str(serialize(welcome)))
+        self.transport.schedule_msg(serialize(welcome))
 
     async def rpc_call(self, data):
         logger.debug(data)
 
-        call_id = data[1]
+        request_id = data[1]
         uri = data[2]
         if len(data) > 3:
             args = data[3]
@@ -67,23 +89,43 @@ class WAMPProtocol:
         else:
             kwargs = {}
 
-        if not isinstance(call_id, str) or not isinstance(uri, str):
+        if not isinstance(request_id, str) or not isinstance(uri, str):
             raise Exception()
 
         try:
-            result = self._rpc_handler(uri, call_id, args, kwargs)
-            result_msg = (WAMPMsgType.CALL_RESULT, call_id, result)
+            request = WAMPRPCRequest(
+                self.session_id,
+                request_id,
+                remote=self.transport.remote,
+                uri=uri,
+                options={},
+                args=args,
+                kwargs=kwargs
+            )
+            result = self._rpc_handler(request)
+            if isinstance(result, WAMPRPCErrorResponse):
+                result_msg = (
+                    WAMPMsgType.ERROR,
+                    WAMPMsgType.CALL,
+                    request_id,
+                    {},
+                    result.uri,
+                    result.args,
+                    result.kwargs
+                )
+            else:
+                result_msg = (WAMPMsgType.CALL_RESULT, request_id, result)
         except Exception as e:
             result_msg = (
                 WAMPMsgType.ERROR,
                 WAMPMsgType.CALL,
-                call_id,
+                request_id,
                 {},
                 "wamp.error.exception_during_rpc_call",
                 str(e)
             )
 
-        self.transport.send_str(serialize(result_msg))
+        self.transport.schedule_msg(serialize(result_msg))
 
     async def pubsub_action(self, data):
         logger.debug(data)
@@ -99,7 +141,6 @@ class WAMPProtocol:
             self._unsubscribe_handler(topic_uri)
 
     def on_open(self):
-        logger.debug("open!")
         self._open_handler()
 
     async def handle_msg(self, message):
@@ -110,13 +151,45 @@ class WAMPProtocol:
 
         msg_type = data[0]
         if msg_type == WAMPMsgType.HELLO:
-            return self.do_welcome()
+            self.do_welcome()
         elif msg_type == WAMPMsgType.CALL and len(data) >= 3:
-            return await self.rpc_call(data)
-        elif msg_type in (WAMPMsgType.SUBSCRIBE,
-                          WAMPMsgType.UNSUBSCRIBE):
-            return await self.pubsub_action(data)
-        elif msg_type in (WAMPMsgType.PUBLISH,):
-            return NotImplementedError()
+            await self.rpc_call(data)
+        elif msg_type in (WAMPMsgType.SUBSCRIBE, WAMPMsgType.UNSUBSCRIBE):
+            await self.pubsub_action(data)
+        elif msg_type in (WAMPMsgType.PUBLISH, WAMPMsgType.PUBLISHED,
+                          WAMPMsgType.EVENT):
+            self.do_unimplemented(msg_type, data[1])
         else:
-            raise Exception("Unknown call")
+            await self.do_protocol_violation("Unknown WAMP message type.")
+
+
+@attr.s(frozen=True, slots=True)
+class WAMPRequest:
+    session_id: int = attr.ib()
+    request_id: int = attr.ib()
+    remote: str = attr.ib()
+
+
+@attr.s(frozen=True, slots=True)
+class WAMPRPCRequest(WAMPRequest):
+    options: Mapping = attr.ib()
+    uri: str = attr.ib()
+    args: typing.Optional[Sequence] = attr.ib(factory=tuple)
+    kwargs: typing.Optional[Mapping] = attr.ib(factory=dict)
+
+
+@attr.s(frozen=True, slots=True)
+class WAMPRPCResponse:
+    request: WAMPRPCRequest = attr.ib()
+    details: Mapping = attr.ib()
+    args: typing.Optional[Sequence] = attr.ib(factory=tuple)
+    kwargs: typing.Optional[Mapping] = attr.ib(factory=dict)
+
+
+@attr.s(frozen=True, slots=True)
+class WAMPRPCErrorResponse(WAMPRPCResponse):
+    request: WAMPRPCRequest = attr.ib()
+    details: Mapping = attr.ib()
+    uri: str = attr.ib()
+    args: typing.Optional[Sequence] = attr.ib(factory=tuple)
+    kwargs: typing.Optional[Mapping] = attr.ib(factory=dict)
