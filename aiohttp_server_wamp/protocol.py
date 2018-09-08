@@ -21,6 +21,7 @@ class WAMPMsgType(IntEnum):
 
     CALL = 48
     CALL_RESULT = 50
+    INVOCATION = 68
 
     SUBSCRIBE = 32
     SUBSCRIBED = 33
@@ -33,11 +34,16 @@ class WAMPMsgType(IntEnum):
     EVENT = 36
 
 
+def generate_global_id():
+    """Returns an integer that can be used for globally scoped identifiers in
+    WAMP communications. Per the WAMP spec, these are random."""
+    return randint(1, 9007199254740992)
+
 class WAMPProtocol:
     def __init__(self, transport, *args, open_handler=None, rpc_handler=None,
                  subscribe_handler=None, unsubscribe_handler=None, loop=None,
-                 **kwargs):
-        self.session_id = randint(1, 9007199254740992)
+                 agent_name=None, **kwargs):
+        self.session_id = generate_global_id()
         self.transport = transport
         self.loop = loop or asyncio.get_event_loop()
 
@@ -45,6 +51,8 @@ class WAMPProtocol:
         self._subscribe_handler = subscribe_handler
         self._unsubscribe_handler = unsubscribe_handler
         self._rpc_handler = rpc_handler
+
+        self.agent_name = agent_name or 'aiohttp-server-wamp'
 
         super(WAMPProtocol, self).__init__(*args, **kwargs)
 
@@ -67,16 +75,36 @@ class WAMPProtocol:
     def do_welcome(self):
         welcome = (
             WAMPMsgType.WELCOME,
-            int(self.session_id),
+            self.session_id,
             {
-                'roles': {'broker': {}, 'dealer': {}}
+                'roles': {'broker': {}, 'dealer': {}},
+                'agent': self.agent_name
             }
         )
         self.transport.schedule_msg(serialize(welcome))
 
-    async def rpc_call(self, data):
-        logger.debug(data)
+    def do_unauthorized(self, data):
+        msg_type = data[0]
+        request_id = data[1]
+        self.transport.schedule_msg(
+            serialize((msg_type, request_id, {}, "wamp.error.not_authorized"))
+        )
 
+    def publish_event(self, subscription, event):
+        msg = [
+            WAMPMsgType.EVENT,
+            subscription,
+            event.publication,
+            {}
+        ]
+        if event.kwargs:
+            msg.append(event.args)
+            msg.append(event.kwargs)
+        elif event.args:
+            msg.append(event.args)
+        self.transport.schedule_msg(serialize(msg))
+
+    async def recv_rpc_call(self, data):
         request_id = data[1]
         uri = data[2]
         if len(data) > 3:
@@ -126,18 +154,81 @@ class WAMPProtocol:
 
         self.transport.schedule_msg(serialize(result_msg))
 
-    async def pubsub_action(self, data):
-        logger.debug(data)
-        action = data[0]
-        topic_uri = data[1]
+    async def recv_subscribe(self, data):
+        request_id = data[1]
+        options = data[2]
+        uri = data[3]
 
-        if not (isinstance(action, int) and isinstance(topic_uri, str)):
-            raise Exception()
+        request = WAMPSubscribeRequest(
+            self.session_id,
+            request_id,
+            remote=self.transport.remote,
+            options=options,
+            uri=uri
+        )
 
-        if action == WAMPMsgType.SUBSCRIBE and len(data) == 2:
-            self._subscribe_handler(topic_uri)
-        elif action == WAMPMsgType.UNSUBSCRIBE and len(data) == 2:
-            self._unsubscribe_handler(topic_uri)
+        try:
+            result = self._subscribe_handler(request)
+            if isinstance(result, WAMPSubscribeErrorResponse):
+                result_msg = (
+                    WAMPMsgType.ERROR,
+                    WAMPMsgType.SUBSCRIBE,
+                    request_id,
+                    result.details,
+                    result.uri
+                )
+            else:
+                result_msg = (
+                    WAMPMsgType.SUBSCRIBED,
+                    request_id,
+                    result.subscription
+                )
+        except Exception as e:
+            result_msg = (
+                WAMPMsgType.ERROR,
+                WAMPMsgType.SUBSCRIBE,
+                request_id,
+                {},
+                "wamp.error.exception_during_rpc_call",
+                str(e)
+            )
+        self.transport.schedule_msg(serialize(result_msg))
+
+    async def recv_unsubscribe(self, data):
+        request_id = data[1]
+        options = data[2]
+        uri = data[3]
+
+        request = WAMPUnsubscribeRequest(
+            self.session_id,
+            request_id,
+            remote=self.transport.remote,
+            options=options,
+            uri=uri
+        )
+
+        try:
+            result = self._unsubscribe_handler(request)
+            if isinstance(result, WAMPUnsubscribeErrorResponse):
+                result_msg = (
+                    WAMPMsgType.ERROR,
+                    WAMPMsgType.UNSUBSCRIBE,
+                    request_id,
+                    result.details,
+                    result.uri
+                )
+            else:
+                result_msg = (WAMPMsgType.UNSUBSCRIBED, request_id)
+        except Exception as e:
+            result_msg = (
+                WAMPMsgType.ERROR,
+                WAMPMsgType.SUBSCRIBE,
+                request_id,
+                {},
+                "wamp.error.exception_during_rpc_call",
+                str(e)
+            )
+        self.transport.schedule_msg(serialize(result_msg))
 
     def on_open(self):
         self._open_handler()
@@ -151,12 +242,16 @@ class WAMPProtocol:
         msg_type = data[0]
         if msg_type == WAMPMsgType.HELLO:
             self.do_welcome()
-        elif msg_type == WAMPMsgType.CALL and len(data) >= 3:
-            await self.rpc_call(data)
-        elif msg_type in (WAMPMsgType.SUBSCRIBE, WAMPMsgType.UNSUBSCRIBE):
-            await self.pubsub_action(data)
-        elif msg_type in (WAMPMsgType.PUBLISH, WAMPMsgType.PUBLISHED,
-                          WAMPMsgType.EVENT):
+            self._open_handler(self.session_id, self.transport.remote)
+        elif msg_type == WAMPMsgType.CALL:
+            await self.recv_rpc_call(data)
+        elif msg_type == WAMPMsgType.SUBSCRIBE:
+            await self.recv_subscribe(data)
+        elif msg_type == WAMPMsgType.UNSUBSCRIBE:
+            await self.recv_unsubscribe(data)
+        elif msg_type in (WAMPMsgType.EVENT, WAMPMsgType.INVOCATION):
+            await self.do_unauthorized(data)
+        elif msg_type in (WAMPMsgType.PUBLISH, WAMPMsgType.PUBLISHED):
             self.do_unimplemented(msg_type, data[1])
         else:
             await self.do_protocol_violation("Unknown WAMP message type.")
@@ -190,13 +285,7 @@ class WAMPSubscribeErrorResponse:
 
 @attr.s(frozen=True, slots=True)
 class WAMPUnsubscribeRequest(WAMPRequest):
-    options: Mapping = attr.ib()
-    uri: str = attr.ib()
-
-
-@attr.s(frozen=True, slots=True)
-class WAMPUnsubscribeResponse:
-    request: WAMPUnsubscribeRequest = attr.ib()
+    subscription: int = attr.ib()
 
 
 @attr.s(frozen=True, slots=True)
@@ -208,8 +297,7 @@ class WAMPUnsubscribeErrorResponse:
 
 @attr.s(frozen=True, slots=True)
 class WAMPEvent:
-    subscription: int = attr.ib()
-    publication: int = attr.ib()
+    publication: int = attr.ib(factory=generate_global_id)
     details: Mapping = attr.ib(factory=dict)
     args: Sequence = attr.ib(default=())
     kwargs: Mapping = attr.ib(factory=dict)
