@@ -45,8 +45,9 @@ class WSTransport:
 class WAMPApplication:
     WS_PROTOCOLS = ('wamp.2.json',)
 
-    def __init__(self):
-        self.router = Router()
+    def __init__(self, router=None, broker=None):
+        self.router = router or Router()
+        self.broker = broker
 
     async def handle(self, request):
         """Route handler for aiohttp server application. Any websocket routed to
@@ -56,8 +57,18 @@ class WAMPApplication:
         await ws.prepare(request)
 
         transport = WSTransport(request, ws)
-        wamp_protocol = WAMPProtocol(transport=transport,
-                                     rpc_handler=self.router.handle_rpc_call)
+        if self.broker:
+            wamp_protocol = WAMPProtocol(
+                transport=transport,
+                rpc_handler=self.router.handle_rpc_call,
+                subscribe_handler=self.broker.handle_subscribe,
+                unsubscribe_handler=self.broker.handle_unsubscribe
+            )
+        else:
+            wamp_protocol = WAMPProtocol(
+                transport=transport,
+                rpc_handler=self.router.handle_rpc_call
+            )
 
         async for msg in ws:
             if msg.type == WSMsgType.TEXT:

@@ -39,6 +39,7 @@ def generate_global_id():
     WAMP communications. Per the WAMP spec, these are random."""
     return randint(1, 9007199254740992)
 
+
 class WAMPProtocol:
     def __init__(self, transport, *args, open_handler=None, rpc_handler=None,
                  subscribe_handler=None, unsubscribe_handler=None, loop=None,
