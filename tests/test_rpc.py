@@ -1,8 +1,8 @@
 import asyncio
 
-from aiohttp_server_wamp import rpc
-from aiohttp_server_wamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
-                                          WAMPRPCResponse)
+from server_wamp import rpc
+from server_wamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
+                                  WAMPRPCResponse)
 
 
 def test_route_table():

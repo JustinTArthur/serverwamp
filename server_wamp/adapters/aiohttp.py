@@ -2,8 +2,8 @@ import asyncio
 
 from aiohttp import WSMsgType, web
 
-from aiohttp_server_wamp.protocol import WAMPProtocol
-from aiohttp_server_wamp.rpc import Router
+from server_wamp.protocol import WAMPProtocol
+from server_wamp.rpc import Router
 
 
 class WSTransport:

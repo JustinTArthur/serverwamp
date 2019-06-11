@@ -3,8 +3,8 @@ from collections.abc import Sequence
 
 import attr
 
-from aiohttp_server_wamp.helpers import camel_to_snake
-from aiohttp_server_wamp.protocol import WAMPRPCErrorResponse, WAMPRPCResponse
+from server_wamp.helpers import camel_to_snake
+from server_wamp.protocol import WAMPRPCErrorResponse, WAMPRPCResponse
 
 
 class WAMPNoSuchProcedureError(Exception):

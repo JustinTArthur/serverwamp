@@ -1,6 +1,6 @@
 import json
 
-from aiohttp_server_wamp import protocol
+from server_wamp import protocol
 
 
 def test_publish_event():
