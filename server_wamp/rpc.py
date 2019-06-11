@@ -1,3 +1,4 @@
+import inspect
 from collections import Mapping
 from collections.abc import Sequence
 
@@ -6,14 +7,21 @@ import attr
 from server_wamp.helpers import camel_to_snake
 from server_wamp.protocol import WAMPRPCErrorResponse, WAMPRPCResponse
 
+POSITIONAL_PARAM_KINDS = frozenset({
+    inspect.Parameter.POSITIONAL_ONLY,
+    inspect.Parameter.POSITIONAL_OR_KEYWORD
+})
+PARAM_PASSTHROUGH_TYPES = frozenset({str, inspect.Parameter.empty})
+
 
 class WAMPNoSuchProcedureError(Exception):
     pass
 
 
 class Router:
-    def __init__(self):
+    def __init__(self, camel_snake_conversion=False):
         self.dispatch_table = {}
+        self.camel_snake_conversion = camel_snake_conversion
 
     def add_route(self, uri, handler):
         self.dispatch_table[uri] = handler
@@ -34,10 +42,50 @@ class Router:
             route_obj.register(self)
 
     async def handle_rpc_call(self, rpc_request) -> WAMPRPCResponse:
-        command = self.resolve(rpc_request.uri)
-        kwargs = {camel_to_snake(k): v for k, v in rpc_request.kwargs.items()}
+        procedure = self.resolve(rpc_request.uri)
+
+        if self.camel_snake_conversion:
+            call_kwargs = {
+                camel_to_snake(k): v
+                for k, v
+                in rpc_request.kwargs.items()
+            }
+        else:
+            call_kwargs = rpc_request.kwargs.copy()
+
+        special_params = {
+            'request': rpc_request,
+            #'session': rpc_request.session
+        }
+
+        request_arg_values = iter(rpc_request.args)
+        call_args = []
+
+        for name, param in inspect.signature(procedure).parameters.items():
+            is_passthrough = param.annotation in PARAM_PASSTHROUGH_TYPES
+            if param.kind in POSITIONAL_PARAM_KINDS:
+                if name in special_params:
+                    call_args.append(special_params[name])
+                else:
+                    try:
+                        value = next(request_arg_values)
+                    except StopIteration:
+                        value = rpc_request.kwargs[name]
+                    call_args.append(
+                        value if is_passthrough else param.annotation(value)
+                    )
+            else:
+                if name in special_params:
+                    call_kwargs[name] = special_params[name]
+                elif is_passthrough:
+                    call_kwargs[name] = rpc_request.kwargs[name]
+                else:
+                    call_kwargs[name] = param.annotation(
+                        rpc_request.kwargs[name]
+                    )
+
         try:
-            result = await command(*rpc_request.args, **kwargs)
+            result = await procedure(*call_args, **call_kwargs)
         except RPCError as error:
             return self._response_for_rpc_error(rpc_request, error)
         if isinstance(result, (WAMPRPCResponse, WAMPRPCErrorResponse)):

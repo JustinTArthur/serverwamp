@@ -2,10 +2,10 @@ from setuptools import setup, find_packages
 import sys
 
 if sys.version_info < (3, 6):
-    raise RuntimeError("aiohttp-server-wamp requires Python 3.6+")
+    raise RuntimeError("server_wamp requires Python 3.6+")
 
 setup(
-    name='aiohttp-server-wamp',
+    name='server_wamp',
     version='0.1.0',
     description=('An adapter for aiohttp, enabling a server to service WAMP '
                  'calls and subscriptions over WebSockets.'),
@@ -29,7 +29,7 @@ setup(
     ),
     author='Justin Turner Arthur',
     author_email='justinarthur@gmail.com',
-    url='https://github.com/JustinTArthur/aiohttp-server-wamp',
+    url='https://github.com/JustinTArthur/server_wamp',
     license='MIT',
     packages=find_packages(exclude=('tests',)),
 )

@@ -1,13 +1,13 @@
-# aiohttp-server-wamp
-An adapter to aiohttp, enabling an aiohttp server to serve JSON WAMP features
-over WebSockets. With aiohttp-server-wamp, an aiohttp server can act as both a
-WAMP broker and WAMP dealer.
+# server_wamp
+Components that add JSON WAMP features to WebSocket servers.
+With server_wamp, an aiohttp server can act as both a WAMP broker and WAMP
+dealer.
 
 ## Example WAMP Microservice
 ```python
 from aiohttp import web
-from aiohttp_server_wamp.adapters.aiohttp import WAMPApplication
-from aiohttp_server_wamp.rpc import RPCRouteTableDef, RPCError
+from server_wamp.adapters.aiohttp import WAMPApplication
+from server_wamp.rpc import RPCRouteTableDef, RPCError
 
 rpc_routes = RPCRouteTableDef()
 
