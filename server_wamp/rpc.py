@@ -45,13 +45,13 @@ class Router:
         procedure = self.resolve(rpc_request.uri)
 
         if self.camel_snake_conversion:
-            call_kwargs = {
+            request_kwargs = {
                 camel_to_snake(k): v
                 for k, v
                 in rpc_request.kwargs.items()
             }
         else:
-            call_kwargs = rpc_request.kwargs.copy()
+            request_kwargs = rpc_request.kwargs.copy()
 
         special_params = {
             'request': rpc_request,
@@ -60,29 +60,39 @@ class Router:
 
         request_arg_values = iter(rpc_request.args)
         call_args = []
+        call_kwargs = {}
 
         for name, param in inspect.signature(procedure).parameters.items():
             is_passthrough = param.annotation in PARAM_PASSTHROUGH_TYPES
+
+            if name in special_params:
+                call_args.append(special_params[name])
+                continue
+
+            value_found = False
             if param.kind in POSITIONAL_PARAM_KINDS:
-                if name in special_params:
-                    call_args.append(special_params[name])
+                try:
+                    value = next(request_arg_values)
+                except StopIteration:
+                    pass
                 else:
-                    try:
-                        value = next(request_arg_values)
-                    except StopIteration:
-                        value = rpc_request.kwargs[name]
-                    call_args.append(
-                        value if is_passthrough else param.annotation(value)
-                    )
-            else:
-                if name in special_params:
-                    call_kwargs[name] = special_params[name]
-                elif is_passthrough:
-                    call_kwargs[name] = rpc_request.kwargs[name]
+                    value_found = True
+            if not value_found:
+                if name in request_kwargs:
+                    value = request_kwargs.pop(name)
+                elif param.default is not param.empty:
+                    value = param.default
                 else:
-                    call_kwargs[name] = param.annotation(
-                        rpc_request.kwargs[name]
+                    return WAMPRPCErrorResponse(
+                        rpc_request,
+                        uri='wamp.error.invalid_argument',
+                        kwargs={'message': f'Argument {name} required.'}
                     )
+            call_args.append(
+                value
+                if is_passthrough or isinstance(value, param.annotation)
+                else param.annotation(value)
+            )
 
         try:
             result = await procedure(*call_args, **call_kwargs)
@@ -127,7 +137,6 @@ class Router:
                     'message': error.error_arguments
                 }
             )
-
 
 
 @attr.s(frozen=True, repr=False, slots=True)

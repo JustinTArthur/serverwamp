@@ -1,4 +1,5 @@
 import asyncio
+from decimal import Decimal
 
 from server_wamp import rpc
 from server_wamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
@@ -63,3 +64,70 @@ def test_router_rpc_handling():
     assert response.request is request
     assert response.uri == 'wamp.error.sample_error_uri'
     assert response.kwargs == {'reason': "It just didn't work out."}
+
+
+def test_type_marshaling():
+    async def typed_rpc_handler(
+        a_decimal: Decimal,
+        a_string: str,
+        an_integer_w_default: int = 45
+    ):
+        return {
+            'string_plus_suffix': f'{a_string}_test_suffix',
+            'decimal_plus_int': a_decimal + an_integer_w_default
+        }
+
+    router = rpc.Router()
+    router.add_routes((
+        rpc.route('test_route', typed_rpc_handler),
+    ))
+    # Try with args:
+    passthrough_request = WAMPRPCRequest(
+        1,
+        1,
+        '192.168.1.101',
+        {},
+        'test_route',
+        (1234.56, 'test_string')
+    )
+    coercion_request = WAMPRPCRequest(
+        1,
+        1,
+        '192.168.1.101',
+        {},
+        'test_route',
+        ('1234.56', 'another_test_string')
+    )
+    kwargs_request = WAMPRPCRequest(
+        1,
+        1,
+        '192.168.1.101',
+        {},
+        'test_route',
+        kwargs={
+            'a_decimal': 42.0,
+            'a_string': 'kwargs_test_string'
+        }
+    )
+    loop = asyncio.get_event_loop()
+    passthrough_response = loop.run_until_complete(
+        router.handle_rpc_call(passthrough_request)
+    )
+    coercion_response = loop.run_until_complete(
+        router.handle_rpc_call(coercion_request)
+    )
+    kwargs_response = loop.run_until_complete(
+        router.handle_rpc_call(kwargs_request)
+    )
+    assert passthrough_response.kwargs == {
+        'string_plus_suffix': 'test_string_test_suffix',
+        'decimal_plus_int': Decimal(1234.56) + 45,
+    }
+    assert coercion_response.kwargs == {
+        'string_plus_suffix': 'another_test_string_test_suffix',
+        'decimal_plus_int': Decimal('1279.56'),
+    }
+    assert kwargs_response.kwargs == {
+        'string_plus_suffix': 'kwargs_test_string_test_suffix',
+        'decimal_plus_int': Decimal(42.0) + 45,
+    }
