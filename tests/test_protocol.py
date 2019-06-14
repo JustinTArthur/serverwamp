@@ -1,4 +1,5 @@
 import json
+import socket
 
 from server_wamp import protocol
 
@@ -8,10 +9,17 @@ def test_publish_event():
 
     class CollectingTransport:
         @staticmethod
+        def get_extra_info(info_name):
+            if info_name == 'peername':
+                return '127.0.0.1', 80
+            elif info_name == 'socket':
+                return socket.socket()
+
+        @staticmethod
         def schedule_msg(msg):
             sent_msgs.append(msg)
 
-    proto = protocol.WAMPProtocol(transport=CollectingTransport(),)
+    proto = protocol.WAMPProtocol(transport=CollectingTransport())
 
     event1 = protocol.WAMPEvent()
     proto.publish_event(87624, event1)

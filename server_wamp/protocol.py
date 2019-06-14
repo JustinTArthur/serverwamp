@@ -6,7 +6,9 @@ from enum import IntEnum, unique
 from json import dumps as serialize
 from json import loads as deserialize
 from random import randint
+from typing import Optional
 
+from server_wamp.helpers import format_sockaddr
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,10 @@ class WAMPProtocol:
     def __init__(self, transport, *args, open_handler=None, rpc_handler=None,
                  subscribe_handler=None, unsubscribe_handler=None, loop=None,
                  agent_name=None, **kwargs):
-        self.session_id = generate_global_id()
+        self.session = WAMPSession(
+            session_id=generate_global_id(),
+            remote=format_sockaddr(transport.get_extra_info('socket').family, transport.get_extra_info('peername'))
+        )
         self.transport = transport
         self.loop = loop or asyncio.get_event_loop()
 
@@ -76,7 +81,7 @@ class WAMPProtocol:
     def do_welcome(self):
         welcome = (
             WAMPMsgType.WELCOME,
-            self.session_id,
+            self.session.session_id,
             {
                 'roles': {'broker': {}, 'dealer': {}},
                 'agent': self.agent_name
@@ -122,9 +127,8 @@ class WAMPProtocol:
 
         try:
             request = WAMPRPCRequest(
-                self.session_id,
+                self.session,
                 request_id,
-                remote=self.transport.remote,
                 uri=uri,
                 options={},
                 args=args,
@@ -161,9 +165,8 @@ class WAMPProtocol:
         uri = data[3]
 
         request = WAMPSubscribeRequest(
-            self.session_id,
+            self.session,
             request_id,
-            remote=self.transport.remote,
             options=options,
             uri=uri
         )
@@ -200,9 +203,8 @@ class WAMPProtocol:
         subscription = data[2]
 
         request = WAMPUnsubscribeRequest(
-            self.session_id,
+            self.session,
             request_id,
-            remote=self.transport.remote,
             subscription=subscription
         )
 
@@ -241,7 +243,7 @@ class WAMPProtocol:
         msg_type = data[0]
         if msg_type == WAMPMsgType.HELLO:
             self.do_welcome()
-            self._open_handler(self.session_id, self.transport.remote)
+            self._open_handler(self.session)
         elif msg_type == WAMPMsgType.CALL:
             await self.recv_rpc_call(data)
         elif msg_type == WAMPMsgType.SUBSCRIBE:
@@ -257,10 +259,15 @@ class WAMPProtocol:
 
 
 @dataclass(frozen=True)
-class WAMPRequest:
+class WAMPSession:
     session_id: int
+    remote: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class WAMPRequest:
+    session: WAMPSession
     request_id: int
-    remote: str
 
 
 @dataclass(frozen=True)

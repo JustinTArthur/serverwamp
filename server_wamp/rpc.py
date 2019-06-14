@@ -2,7 +2,7 @@ import inspect
 from collections import Mapping
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Union
+from typing import Awaitable, Callable, MutableMapping, Union
 
 from server_wamp.helpers import camel_to_snake
 from server_wamp.protocol import WAMPRPCErrorResponse, WAMPRPCResponse
@@ -20,7 +20,7 @@ class WAMPNoSuchProcedureError(Exception):
 
 class Router:
     def __init__(self, camel_snake_conversion=False):
-        self.dispatch_table = {}
+        self.dispatch_table: MutableMapping[str, Callable[..., Awaitable]] = {}
         self.camel_snake_conversion = camel_snake_conversion
 
     def add_route(self, uri, handler):
@@ -58,7 +58,7 @@ class Router:
 
         special_params = {
             'request': rpc_request,
-            #'session': rpc_request.session
+            'session': rpc_request.session
         }
 
         request_arg_values = iter(rpc_request.args)
@@ -104,10 +104,9 @@ class Router:
         if isinstance(result, (WAMPRPCResponse, WAMPRPCErrorResponse)):
             return result
         elif isinstance(result, Mapping):
-            return WAMPRPCResponse(
-                rpc_request, details={}, args=(), kwargs=result)
+            return WAMPRPCResponse(rpc_request, kwargs=result)
         elif isinstance(result, Sequence):
-            return WAMPRPCResponse(rpc_request, details={}, args=result)
+            return WAMPRPCResponse(rpc_request, args=result)
         else:
             raise Exception("Uninterpretable response from RPC handler.")
 
@@ -120,7 +119,6 @@ class Router:
             return WAMPRPCErrorResponse(
                 request,
                 uri=error.uri,
-                details={},
                 args=(),
                 kwargs=error.error_arguments
             )
@@ -128,14 +126,12 @@ class Router:
             return WAMPRPCErrorResponse(
                 request,
                 uri=error.uri,
-                details={},
-                args=error.error_arguments
+                args=args
             )
         elif isinstance(args, str):
             return WAMPRPCErrorResponse(
                 request,
                 uri=error.uri,
-                details={},
                 kwargs={
                     'message': error.error_arguments
                 }

@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from server_wamp import rpc
 from server_wamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
-                                  WAMPRPCResponse)
+                                  WAMPRPCResponse, WAMPSession)
 
 
 def test_route_table():
@@ -25,6 +25,7 @@ def test_route_table():
 
 def test_router_rpc_handling():
     loop = asyncio.get_event_loop()
+
     async def sample_handler(arg1):
         return {'kwarg1': 1337, 'kwargs2': 'Test.', 'requestArg1': arg1}
 
@@ -41,9 +42,8 @@ def test_router_rpc_handling():
     ))
 
     request = WAMPRPCRequest(
+        WAMPSession(1),
         1,
-        1,
-        '192.168.1.101',
         {},
         'sample.uri',
         ['testArgValue']
@@ -58,7 +58,7 @@ def test_router_rpc_handling():
         'requestArg1': 'testArgValue'
     }
 
-    request = WAMPRPCRequest(1, 1, '192.168.1.101', {}, 'sample.uri.with_error')
+    request = WAMPRPCRequest(WAMPSession(1), 2, {}, 'sample.uri.with_error')
     response = loop.run_until_complete(router.handle_rpc_call(request))
     assert isinstance(response, WAMPRPCErrorResponse)
     assert response.request is request
@@ -83,25 +83,22 @@ def test_type_marshaling():
     ))
     # Try with args:
     passthrough_request = WAMPRPCRequest(
+        WAMPSession(1),
         1,
-        1,
-        '192.168.1.101',
         {},
         'test_route',
         (1234.56, 'test_string')
     )
     coercion_request = WAMPRPCRequest(
-        1,
-        1,
-        '192.168.1.101',
+        WAMPSession(1),
+        2,
         {},
         'test_route',
         ('1234.56', 'another_test_string')
     )
     kwargs_request = WAMPRPCRequest(
-        1,
-        1,
-        '192.168.1.101',
+        WAMPSession(1),
+        3,
         {},
         'test_route',
         kwargs={
