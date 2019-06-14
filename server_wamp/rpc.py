@@ -1,8 +1,8 @@
 import inspect
 from collections import Mapping
 from collections.abc import Sequence
-
-import attr
+from dataclasses import dataclass
+from typing import Awaitable, Callable, Union
 
 from server_wamp.helpers import camel_to_snake
 from server_wamp.protocol import WAMPRPCErrorResponse, WAMPRPCResponse
@@ -41,7 +41,10 @@ class Router:
         for route_obj in routes:
             route_obj.register(self)
 
-    async def handle_rpc_call(self, rpc_request) -> WAMPRPCResponse:
+    async def handle_rpc_call(
+        self,
+        rpc_request
+    ) -> Union[WAMPRPCResponse, WAMPRPCErrorResponse]:
         procedure = self.resolve(rpc_request.uri)
 
         if self.camel_snake_conversion:
@@ -139,11 +142,11 @@ class Router:
             )
 
 
-@attr.s(frozen=True, repr=False, slots=True)
+@dataclass(frozen=True)
 class RPCRouteDef:
-    uri = attr.ib(type=str)
-    handler = attr.ib()
-    kwargs = attr.ib()
+    uri: str
+    handler: Callable[..., Awaitable]
+    kwargs: Mapping
 
     def __repr__(self):
         info = []

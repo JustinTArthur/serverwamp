@@ -1,12 +1,12 @@
 import asyncio
 import logging
 from collections import Mapping, Sequence
+from dataclasses import dataclass, field
 from enum import IntEnum, unique
 from json import dumps as serialize
 from json import loads as deserialize
 from random import randint
 
-import attr
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ class WAMPProtocol:
         else:
             kwargs = {}
 
-        if not isinstance(request_id, str) or not isinstance(uri, str):
+        if not isinstance(request_id, int) or not isinstance(uri, str):
             raise Exception()
 
         try:
@@ -197,15 +197,13 @@ class WAMPProtocol:
 
     async def recv_unsubscribe(self, data):
         request_id = data[1]
-        options = data[2]
-        uri = data[3]
+        subscription = data[2]
 
         request = WAMPUnsubscribeRequest(
             self.session_id,
             request_id,
             remote=self.transport.remote,
-            options=options,
-            uri=uri
+            subscription=subscription
         )
 
         try:
@@ -258,72 +256,72 @@ class WAMPProtocol:
             await self.do_protocol_violation("Unknown WAMP message type.")
 
 
-@attr.s(frozen=True, slots=True)
+@dataclass(frozen=True)
 class WAMPRequest:
-    session_id: int = attr.ib()
-    request_id: int = attr.ib()
-    remote: str = attr.ib()
+    session_id: int
+    request_id: int
+    remote: str
 
 
-@attr.s(frozen=True, slots=True)
+@dataclass(frozen=True)
 class WAMPSubscribeRequest(WAMPRequest):
-    options: Mapping = attr.ib()
-    uri: str = attr.ib()
+    options: Mapping
+    uri: str
 
 
-@attr.s(frozen=True, slots=True)
+@dataclass(frozen=True)
 class WAMPSubscribeResponse(WAMPRequest):
-    request: WAMPSubscribeRequest = attr.ib()
-    subscription: int = attr.ib()
+    request: WAMPSubscribeRequest
+    subscription: int
 
 
-@attr.s(frozen=True, slots=True)
+@dataclass(frozen=True)
 class WAMPSubscribeErrorResponse:
-    request: WAMPSubscribeRequest = attr.ib()
-    uri: str = attr.ib()
-    details: Mapping = attr.ib(factory=dict)
+    request: WAMPSubscribeRequest
+    uri: str
+    details: Mapping = field(default_factory=dict)
 
 
-@attr.s(frozen=True, slots=True)
+@dataclass(frozen=True)
 class WAMPUnsubscribeRequest(WAMPRequest):
-    subscription: int = attr.ib()
+    subscription: int
 
 
-@attr.s(frozen=True, slots=True)
+@dataclass(frozen=True)
 class WAMPUnsubscribeErrorResponse:
-    request: WAMPUnsubscribeRequest = attr.ib()
-    uri: str = attr.ib()
-    details: Mapping = attr.ib(factory=dict)
+    request: WAMPUnsubscribeRequest
+    uri: str
+    details: Mapping = field(default_factory=dict)
 
 
-@attr.s(frozen=True, slots=True)
+@dataclass(frozen=True)
 class WAMPEvent:
-    publication: int = attr.ib(factory=generate_global_id)
-    details: Mapping = attr.ib(factory=dict)
-    args: Sequence = attr.ib(default=())
-    kwargs: Mapping = attr.ib(factory=dict)
+    publication: int = field(default_factory=generate_global_id)
+    details: Mapping = field(default_factory=dict)
+    args: Sequence = ()
+    kwargs: Mapping = field(default_factory=dict)
 
 
-@attr.s(frozen=True, slots=True)
+@dataclass(frozen=True)
 class WAMPRPCRequest(WAMPRequest):
-    options: Mapping = attr.ib()
-    uri: str = attr.ib()
-    args: Sequence = attr.ib(default=())
-    kwargs: Mapping = attr.ib(factory=dict)
+    options: Mapping
+    uri: str
+    args: Sequence = ()
+    kwargs: Mapping = field(default_factory=dict)
 
 
-@attr.s(frozen=True, slots=True)
+@dataclass(frozen=True)
 class WAMPRPCResponse:
-    request: WAMPRPCRequest = attr.ib()
-    details: Mapping = attr.ib()
-    args: Sequence = attr.ib(default=())
-    kwargs: Mapping = attr.ib(factory=dict)
+    request: WAMPRPCRequest
+    details: Mapping = field(default_factory=dict)
+    args: Sequence = ()
+    kwargs: Mapping = field(default_factory=dict)
 
 
-@attr.s(frozen=True, slots=True)
-class WAMPRPCErrorResponse(WAMPRPCResponse):
-    request: WAMPRPCRequest = attr.ib()
-    details: Mapping = attr.ib()
-    uri: str = attr.ib()
-    args: Sequence = attr.ib(default=())
-    kwargs: Mapping = attr.ib(factory=dict)
+@dataclass(frozen=True)
+class WAMPRPCErrorResponse:
+    request: WAMPRPCRequest
+    uri: str
+    details: Mapping = field(default_factory=dict)
+    args: Sequence = ()
+    kwargs: Mapping = field(default_factory=dict)

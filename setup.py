@@ -23,7 +23,10 @@ setup(
         'Topic :: Internet',
         'Framework :: AsyncIO',
     ),
-    install_requires=('aiohttp>=3.0.0', 'attrs>=17.3.0'),
+    install_requires=(
+        'aiohttp>=3.0.0',
+        'dataclasses~=0.6;python_version<"3.7"'
+    ),
     keywords=(
         'WAMP', 'WebSockets', 'aiohttp', 'RPC', 'pubsub', 'broker', 'dealer'
     ),
