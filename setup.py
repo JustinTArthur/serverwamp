@@ -1,14 +1,10 @@
 from setuptools import setup, find_packages
-import sys
-
-if sys.version_info < (3, 6):
-    raise RuntimeError("serverwamp requires Python 3.6+")
 
 setup(
     name='serverwamp',
     version='0.1.0',
-    description=('An adapter for aiohttp, enabling a server to service WAMP '
-                 'calls and subscriptions over WebSockets.'),
+    description=('Components that add Web Application Messaging Protocol '
+                 'features to WebSocket servers.'),
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
     classifiers=(
@@ -30,6 +26,7 @@ setup(
     keywords=(
         'WAMP', 'WebSockets', 'aiohttp', 'RPC', 'pubsub', 'broker', 'dealer'
     ),
+    python_requires=">=3.6",
     author='Justin Turner Arthur',
     author_email='justinarthur@gmail.com',
     url='https://github.com/JustinTArthur/serverwamp',
