@@ -1,14 +1,14 @@
 # serverwamp
 Components that add
 [Web Application Messaging Protocol](https://wamp-proto.org/) features to
-WebSocket servers. With server_wamp, an aiohttp server can act as both a WAMP
+WebSocket servers. With serverwamp, an aiohttp server can act as both a WAMP
 broker and dealer.
 
 ## Example WAMP Microservice
 ```python
 from aiohttp import web
-from server_wamp.adapters.aiohttp import WAMPApplication
-from server_wamp.rpc import RPCRouteTableDef, RPCError
+from serverwamp.adapters.aiohttp import WAMPApplication
+from serverwamp.rpc import RPCRouteTableDef, RPCError
 
 rpc_routes = RPCRouteTableDef()
 
