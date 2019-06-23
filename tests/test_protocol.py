@@ -1,7 +1,7 @@
 import json
 import socket
 
-from server_wamp import protocol
+from serverwamp import protocol
 
 
 def test_publish_event():

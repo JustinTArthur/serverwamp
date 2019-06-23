@@ -4,8 +4,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Awaitable, Callable, MutableMapping, Union
 
-from server_wamp.helpers import camel_to_snake
-from server_wamp.protocol import WAMPRPCErrorResponse, WAMPRPCResponse
+from serverwamp.helpers import camel_to_snake
+from serverwamp.protocol import WAMPRPCErrorResponse, WAMPRPCResponse
 
 POSITIONAL_PARAM_KINDS = frozenset({
     inspect.Parameter.POSITIONAL_ONLY,

@@ -1,9 +1,9 @@
 import asyncio
 from decimal import Decimal
 
-from server_wamp import rpc
-from server_wamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
-                                  WAMPRPCResponse, WAMPSession)
+from serverwamp import rpc
+from serverwamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
+                                 WAMPRPCResponse, WAMPSession)
 
 
 def test_route_table():

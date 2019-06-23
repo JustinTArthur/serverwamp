@@ -8,7 +8,7 @@ from json import loads as deserialize
 from random import randint
 from typing import Optional
 
-from server_wamp.helpers import format_sockaddr
+from serverwamp.helpers import format_sockaddr
 
 logger = logging.getLogger(__name__)
 

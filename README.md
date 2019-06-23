@@ -1,7 +1,8 @@
-# server_wamp
-Components that add JSON WAMP features to WebSocket servers.
-With server_wamp, an aiohttp server can act as both a WAMP broker and WAMP
-dealer.
+# serverwamp
+Components that add
+[Web Application Messaging Protocol](https://wamp-proto.org/) features to
+WebSocket servers. With server_wamp, an aiohttp server can act as both a WAMP
+broker and dealer.
 
 ## Example WAMP Microservice
 ```python
@@ -65,3 +66,9 @@ low-level features yet.
 * The out-of-the-box RPC handler does not provide the URI, session ID or call ID
 to the function that the call is routed to. This may be addressed in a later
 version with arg inspection/injection or async context vars.
+
+## Development
+Unit tests can be run with:
+
+    pip install -e .
+    pytest
