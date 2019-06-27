@@ -1,19 +1,25 @@
 import asyncio
+from asyncio import AbstractEventLoop, Task
+from typing import Set
 
 from aiohttp import WSMsgType, web
-
-from serverwamp.protocol import WAMPProtocol
+from serverwamp.protocol import WAMPProtocol, WAMPRequest
 from serverwamp.rpc import Router
 
 
 class WSTransport:
     """Transport for WAMPProtocol objects for sending messages across an aiohttp
     WebSocketResponse."""
-    def __init__(self, request, ws_response, loop=None):
+    def __init__(
+        self,
+        request: WAMPRequest,
+        ws_response: web.WebSocketResponse,
+        loop: AbstractEventLoop = None
+    ) -> None:
         self.request = request
         self.ws = ws_response
         self.loop = loop or asyncio.get_event_loop()
-        self.scheduled_tasks = set()
+        self.scheduled_tasks: Set[Task] = set()
         self.closed = False
 
     async def close(self):
@@ -24,7 +30,7 @@ class WSTransport:
 
     @property
     def remote(self):
-        return self.request.remote
+        return self.request.session.remote
 
     def schedule_msg(self, msg):
         """Send a message to the WebSocket when the event loop gets a chance."""

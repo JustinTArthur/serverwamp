@@ -6,7 +6,7 @@ from enum import IntEnum, unique
 from json import dumps as serialize
 from json import loads as deserialize
 from random import randint
-from typing import Optional
+from typing import Any, Callable, Iterable, Optional
 
 from serverwamp.helpers import format_sockaddr
 
@@ -43,9 +43,19 @@ def generate_global_id():
 
 
 class WAMPProtocol:
-    def __init__(self, transport, *args, open_handler=None, rpc_handler=None,
-                 subscribe_handler=None, unsubscribe_handler=None, loop=None,
-                 agent_name=None, **kwargs):
+    def __init__(
+        self,
+        transport: Any,
+        *args,
+        open_handler: Optional[Callable] = None,
+        rpc_handler: Optional[Callable] = None,
+        subscribe_handler: Optional[Callable] = None,
+        unsubscribe_handler: Optional[Callable] = None,
+        loop: Optional[Any] = None,
+        agent_name: Optional[str] = None,
+        websocket_connect_handler: Optional[Callable] = None,
+        **kwargs
+    ) -> None:
         self.session = WAMPSession(
             session_id=generate_global_id(),
             remote=format_sockaddr(transport.get_extra_info('socket').family, transport.get_extra_info('peername'))
@@ -57,15 +67,17 @@ class WAMPProtocol:
         self._subscribe_handler = subscribe_handler
         self._unsubscribe_handler = unsubscribe_handler
         self._rpc_handler = rpc_handler
+        self._websocket_open_handler = websocket_connect_handler
 
         self.agent_name = agent_name or 'aiohttp-server-wamp'
 
-        super(WAMPProtocol, self).__init__(*args, **kwargs)
-
-    def do_unimplemented(self, msg_type, request_id):
-        error_msg = (WAMPMsgType.ERROR, request_id, {},
-                     'wamp.error.not_implemented')
-        self.transport.schedule_msg(serialize(error_msg))
+    def do_unimplemented(self, request_id):
+        self.send_msg((
+            WAMPMsgType.ERROR,
+            request_id,
+            {},
+            'wamp.error.not_implemented'
+        ))
 
     async def do_protocol_violation(self, msg=None):
         if msg:
@@ -73,28 +85,28 @@ class WAMPProtocol:
         else:
             details = {}
 
-        error_msg = (WAMPMsgType.ABORT, details,
-                     'wamp.error.protocol_violation')
-        await self.transport.schedule_msg(serialize(error_msg))
+        error_msg = (
+            WAMPMsgType.ABORT,
+            details,
+            'wamp.error.protocol_violation'
+        )
+        self.send_msg(error_msg)
         await self.transport.close()
 
     def do_welcome(self):
-        welcome = (
+        self.send_msg((
             WAMPMsgType.WELCOME,
             self.session.session_id,
             {
                 'roles': {'broker': {}, 'dealer': {}},
                 'agent': self.agent_name
             }
-        )
-        self.transport.schedule_msg(serialize(welcome))
+        ))
 
     def do_unauthorized(self, data):
         msg_type = data[0]
         request_id = data[1]
-        self.transport.schedule_msg(
-            serialize((msg_type, request_id, {}, "wamp.error.not_authorized"))
-        )
+        self.send_msg((msg_type, request_id, {}, "wamp.error.not_authorized"))
 
     def publish_event(self, subscription, event):
         msg = [
@@ -108,7 +120,7 @@ class WAMPProtocol:
             msg.append(event.kwargs)
         elif event.args:
             msg.append(event.args)
-        self.transport.schedule_msg(serialize(msg))
+        self.send_msg(msg)
 
     async def recv_rpc_call(self, data):
         request_id = data[1]
@@ -153,11 +165,11 @@ class WAMPProtocol:
                 WAMPMsgType.CALL,
                 request_id,
                 {},
-                "wamp.error.exception_during_rpc_call",
+                'wamp.error.exception_during_rpc_call',
                 str(e)
             )
 
-        self.transport.schedule_msg(serialize(result_msg))
+        self.send_msg(result_msg)
 
     async def recv_subscribe(self, data):
         request_id = data[1]
@@ -196,7 +208,7 @@ class WAMPProtocol:
                 "wamp.error.exception_during_rpc_call",
                 str(e)
             )
-        self.transport.schedule_msg(serialize(result_msg))
+        self.send_msg(result_msg)
 
     async def recv_unsubscribe(self, data):
         request_id = data[1]
@@ -229,10 +241,7 @@ class WAMPProtocol:
                 "wamp.error.exception_during_rpc_call",
                 str(e)
             )
-        self.transport.schedule_msg(serialize(result_msg))
-
-    def on_open(self):
-        self._open_handler()
+        self.send_msg(result_msg)
 
     async def handle_msg(self, message):
         data = deserialize(message)
@@ -253,9 +262,12 @@ class WAMPProtocol:
         elif msg_type in (WAMPMsgType.EVENT, WAMPMsgType.INVOCATION):
             await self.do_unauthorized(data)
         elif msg_type in (WAMPMsgType.PUBLISH, WAMPMsgType.PUBLISHED):
-            self.do_unimplemented(msg_type, data[1])
+            self.do_unimplemented(msg_type)
         else:
             await self.do_protocol_violation("Unknown WAMP message type.")
+
+    def send_msg(self, msg: Iterable):
+        self.transport.schedule_msg(serialize(msg))
 
 
 @dataclass(frozen=True)

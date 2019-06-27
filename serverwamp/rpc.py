@@ -2,7 +2,7 @@ import inspect
 from collections import Mapping
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Awaitable, Callable, MutableMapping, Union
+from typing import Any, Awaitable, Callable, MutableMapping, Union
 
 from serverwamp.helpers import camel_to_snake
 from serverwamp.protocol import WAMPRPCErrorResponse, WAMPRPCResponse
@@ -63,7 +63,7 @@ class Router:
 
         request_arg_values = iter(rpc_request.args)
         call_args = []
-        call_kwargs = {}
+        call_kwargs: Mapping[Any, Any] = {}  # TODO: populate for kwarg-onlies
 
         for name, param in inspect.signature(procedure).parameters.items():
             is_passthrough = param.annotation in PARAM_PASSTHROUGH_TYPES
