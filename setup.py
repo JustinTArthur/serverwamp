@@ -32,4 +32,7 @@ setup(
     url='https://github.com/JustinTArthur/serverwamp',
     license='MIT',
     packages=find_packages(exclude=('tests',)),
+    package_data = {
+        'serverwamp': ('py.typed',),
+    },
 )
