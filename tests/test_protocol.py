@@ -16,7 +16,7 @@ def test_publish_event():
                 return socket.socket()
 
         @staticmethod
-        def schedule_msg(msg):
+        def send_msg_soon(msg):
             sent_msgs.append(msg)
 
     proto = protocol.WAMPProtocol(transport=CollectingTransport())

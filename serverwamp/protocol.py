@@ -60,7 +60,7 @@ class WAMPProtocol:
         agent_name: Optional[str] = None,
         websocket_open_handler: Optional[Callable] = None,
         identity_authenticated_handler: Optional[Callable] = None,
-        transport_authenticator: Optional[Callable[[...], Awaitable[Any]]] = None,
+        transport_authenticator: Optional[Callable[..., Awaitable[Any]]] = None,
         **kwargs
     ) -> None:
         self.session = WAMPSession(
