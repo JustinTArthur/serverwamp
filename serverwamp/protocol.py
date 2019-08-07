@@ -6,7 +6,7 @@ from enum import IntEnum, unique
 from json import dumps as serialize
 from json import loads as deserialize
 from random import randint
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Awaitable, Callable, Iterable, Optional
 
 from serverwamp.helpers import format_sockaddr
 
@@ -42,6 +42,11 @@ def generate_global_id():
     return randint(1, 9007199254740992)
 
 
+class AuthenticationFailure(Exception):
+    def __init__(self, reason: str = None):
+        self.reason = reason
+
+
 class WAMPProtocol:
     def __init__(
         self,
@@ -53,7 +58,9 @@ class WAMPProtocol:
         unsubscribe_handler: Optional[Callable] = None,
         loop: Optional[Any] = None,
         agent_name: Optional[str] = None,
-        websocket_connect_handler: Optional[Callable] = None,
+        websocket_open_handler: Optional[Callable] = None,
+        identity_authenticated_handler: Optional[Callable] = None,
+        transport_authenticator: Optional[Callable[[...], Awaitable[Any]]] = None,
         **kwargs
     ) -> None:
         self.session = WAMPSession(
@@ -63,11 +70,13 @@ class WAMPProtocol:
         self.transport = transport
         self.loop = loop or asyncio.get_event_loop()
 
+        self._transport_authenticator = transport_authenticator
         self._open_handler = open_handler
         self._subscribe_handler = subscribe_handler
         self._unsubscribe_handler = unsubscribe_handler
         self._rpc_handler = rpc_handler
-        self._websocket_open_handler = websocket_connect_handler
+        self._identity_authenticated_handler = identity_authenticated_handler
+        self._websocket_open_handler = websocket_open_handler
 
         self.agent_name = agent_name or 'aiohttp-server-wamp'
 
@@ -79,19 +88,30 @@ class WAMPProtocol:
             'wamp.error.not_implemented'
         ))
 
-    async def do_protocol_violation(self, msg=None):
-        if msg:
-            details = {'message': msg}
-        else:
-            details = {}
+    async def authenticate(self):
+        failures = []
+        identity = None
+        if self._transport_authenticator:
+            try:
+                identity = await self._transport_authenticator(self.transport)
+            except AuthenticationFailure as af:
+                failures.append(af)
+        # More authenticators can be checked here.
 
-        error_msg = (
-            WAMPMsgType.ABORT,
-            details,
-            'wamp.error.protocol_violation'
-        )
-        self.send_msg(error_msg)
-        await self.transport.close()
+        if failures:
+            message = ' '.join([af.reason for af in failures if af.reason])
+            await self.do_abort(
+                'wamp.error.not_authorized',
+                message=message or None
+            )
+            return
+
+        self._identity_authenticated_handler(identity)
+        self.do_welcome()
+        self._open_handler(self.session)
+
+    async def do_protocol_violation(self, message=None):
+        await self.do_abort('wamp.error.protocol_violation', message)
 
     def do_welcome(self):
         self.send_msg((
@@ -102,6 +122,13 @@ class WAMPProtocol:
                 'agent': self.agent_name
             }
         ))
+
+    async def do_abort(self, reason, message=None):
+        details = {}
+        if message:
+            details['message'] = message
+        self.send_msg((WAMPMsgType.ABORT, reason,  details))
+        await self.transport.close()
 
     def do_unauthorized(self, data):
         msg_type = data[0]
@@ -251,8 +278,7 @@ class WAMPProtocol:
 
         msg_type = data[0]
         if msg_type == WAMPMsgType.HELLO:
-            self.do_welcome()
-            self._open_handler(self.session)
+            await self.authenticate()
         elif msg_type == WAMPMsgType.CALL:
             await self.recv_rpc_call(data)
         elif msg_type == WAMPMsgType.SUBSCRIBE:
@@ -266,8 +292,11 @@ class WAMPProtocol:
         else:
             await self.do_protocol_violation("Unknown WAMP message type.")
 
+    async def handle_websocket_open(self) -> None:
+        self._websocket_open_handler()
+
     def send_msg(self, msg: Iterable):
-        self.transport.schedule_msg(serialize(msg))
+        self.transport.send_msg_soon(serialize(msg))
 
 
 @dataclass(frozen=True)

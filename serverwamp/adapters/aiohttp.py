@@ -1,61 +1,59 @@
 import asyncio
-from asyncio import AbstractEventLoop, Task
+from asyncio import Task
 from typing import Set
 
 from aiohttp import WSMsgType, web
-from serverwamp.protocol import WAMPProtocol, WAMPRequest
-from serverwamp.rpc import Router
+from serverwamp.adapters import base
+from serverwamp.protocol import WAMPProtocol
+
+get_event_loop = getattr(asyncio, 'get_running_loop', asyncio.get_event_loop)
 
 
-class WSTransport:
+class WSTransport(base.Transport):
     """Transport for WAMPProtocol objects for sending messages across an aiohttp
     WebSocketResponse."""
     def __init__(
         self,
-        request: WAMPRequest,
+        request: web.Request,
         ws_response: web.WebSocketResponse,
-        loop: AbstractEventLoop = None
     ) -> None:
-        self.request = request
-        self.ws = ws_response
-        self.loop = loop or asyncio.get_event_loop()
-        self.scheduled_tasks: Set[Task] = set()
         self.closed = False
-
-    async def close(self):
-        self.closed = True
-        for task in self.scheduled_tasks:
-            task.cancel()
-        await self.ws.close()
+        self.request = request
+        self._loop = get_event_loop()
+        self._scheduled_tasks: Set[Task] = set()
+        self._ws = ws_response
 
     @property
     def remote(self):
-        return self.request.session.remote
+        return self.request.remote
 
-    def schedule_msg(self, msg):
+    @property
+    def cookies(self):
+        return self.request.cookies
+
+    def send_msg_soon(self, msg):
         """Send a message to the WebSocket when the event loop gets a chance."""
         if self.closed:
             return
-        task = self.loop.create_task(self.ws.send_str(msg))
-        self.scheduled_tasks.add(task)
-        task.add_done_callback(self.scheduled_tasks.remove)
+        task = self._loop.create_task(self._ws.send_str(msg))
+        self._scheduled_tasks.add(task)
+        task.add_done_callback(self._scheduled_tasks.remove)
 
     async def send_msg(self, msg):
         """Send a message to the WebSocket immediately, and block until the
         underlying send is complete."""
         if self.closed:
             return
-        await self.ws.send_str(msg)
+        await self._ws.send_str(msg)
+
+    async def close(self):
+        self.closed = True
+        await asyncio.gather(*self._scheduled_tasks)
+        await self._ws.close()
 
 
-class WAMPApplication:
-    WS_PROTOCOLS = ('wamp.2.json',)
-
-    def __init__(self, router=None, broker=None):
-        self.router = router or Router()
-        self.broker = broker
-
-    async def handle(self, request):
+class WAMPApplication(base.WAMPApplication):
+    async def handle(self, request: web.Request):
         """Route handler for aiohttp server application. Any websocket routed to
         this handler will handled as a WAMP WebSocket
         """
@@ -68,13 +66,16 @@ class WAMPApplication:
                 transport=transport,
                 rpc_handler=self.router.handle_rpc_call,
                 subscribe_handler=self.broker.handle_subscribe,
-                unsubscribe_handler=self.broker.handle_unsubscribe
+                unsubscribe_handler=self.broker.handle_unsubscribe,
+                **self._protocol_kwargs
             )
         else:
             wamp_protocol = WAMPProtocol(
                 transport=transport,
-                rpc_handler=self.router.handle_rpc_call
+                rpc_handler=self.router.handle_rpc_call,
+                **self._protocol_kwargs
             )
+        wamp_protocol.handle_websocket_open()
 
         async for msg in ws:
             if msg.type == WSMsgType.TEXT:
@@ -85,6 +86,3 @@ class WAMPApplication:
         print('websocket connection closed')
 
         return ws
-
-    def add_rpc_routes(self, routes):
-        self.router.add_routes(routes)
