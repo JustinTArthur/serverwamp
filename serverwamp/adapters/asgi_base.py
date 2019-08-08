@@ -44,4 +44,7 @@ class WSTransport(base.Transport, ABC):
         })
 
     async def close(self):
+        if self.closed:
+            return
+        self.closed = True
         await self._asgi_send({'type': 'websocket.close'})
