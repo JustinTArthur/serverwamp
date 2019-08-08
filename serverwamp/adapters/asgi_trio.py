@@ -1,4 +1,4 @@
-from contextlib import AbstractAsyncContextManager
+from contextlib import asynccontextmanager
 from typing import Awaitable, Callable, Mapping
 
 import trio
@@ -7,20 +7,15 @@ from serverwamp.adapters import asgi_base, base
 from serverwamp.protocol import WAMPProtocol
 
 
-class WSTransport(asgi_base.WSTransport, AbstractAsyncContextManager):
+class WSTransport(asgi_base.WSTransport):
     def __init__(
         self,
+        nursery,
         asgi_scope: Mapping,
         asgi_send: Callable[[Mapping], Awaitable]
     ) -> None:
         super().__init__(asgi_scope, asgi_send)
-
-    async def __aenter__(self):
-        self._nursery = await trio.open_nursery().__aenter__()
-        return self
-
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        await self.close()
+        self._nursery = nursery
 
     def send_msg_soon(self, msg: str) -> None:
         self._nursery.start_soon(self.send_msg(msg))
@@ -28,8 +23,15 @@ class WSTransport(asgi_base.WSTransport, AbstractAsyncContextManager):
     async def close(self):
         if self.closed:
             return
-        await self._nursery.__aexit__()
         await super().close()
+
+
+@asynccontextmanager
+async def managed_ws_transport(asgi_scope, asgi_send):
+    async with trio.open_nursery() as transport_nursery:
+        transport = WSTransport(transport_nursery, asgi_scope, asgi_send)
+        yield transport
+    await transport.close()
 
 
 class WAMPApplication(base.WAMPApplication):
@@ -43,8 +45,7 @@ class WAMPApplication(base.WAMPApplication):
             raise Exception(f'Connection scope "{type}" not supported by this '
                             'ASGI adapter.')
 
-        async with trio.open_nursery() as nursery:
-            transport = WSTransport(scope, send)
+        async with managed_ws_transport(scope, send) as transport:
             if self.broker:
                 wamp_protocol = WAMPProtocol(
                     transport=transport,
@@ -66,7 +67,7 @@ class WAMPApplication(base.WAMPApplication):
                 'subprotocol': self.WS_PROTOCOLS[0]
             })
 
-            while True:
+            while not transport.closed:
                 event = await receive()
                 event_type = event['type']
                 if event_type == 'websocket.receive':
