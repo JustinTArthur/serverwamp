@@ -28,10 +28,12 @@ class WSTransport(asgi_base.WSTransport):
 
 @asynccontextmanager
 async def managed_ws_transport(asgi_scope, asgi_send):
-    async with trio.open_nursery() as transport_nursery:
-        transport = WSTransport(transport_nursery, asgi_scope, asgi_send)
-        yield transport
-    await transport.close()
+    try:
+        async with trio.open_nursery() as transport_nursery:
+            transport = WSTransport(transport_nursery, asgi_scope, asgi_send)
+            yield transport
+    finally:
+        await transport.close()
 
 
 class WAMPApplication(base.WAMPApplication):

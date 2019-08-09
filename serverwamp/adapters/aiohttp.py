@@ -16,20 +16,21 @@ class WSTransport(base.Transport):
         self,
         request: web.Request,
         ws_response: web.WebSocketResponse,
+        loop: asyncio.AbstractEventLoop
     ) -> None:
         self.closed = False
-        self.request = request
-        self._loop = get_event_loop()
+        self._request = request
+        self._loop = loop
         self._scheduled_tasks: Set[Task] = set()
         self._ws = ws_response
 
     @property
     def remote(self):
-        return self.request.remote
+        return self._request.remote
 
     @property
     def cookies(self):
-        return self.request.cookies
+        return self._request.cookies
 
     def send_msg_soon(self, msg):
         """Send a message to the WebSocket when the event loop gets a chance."""
@@ -47,6 +48,8 @@ class WSTransport(base.Transport):
         await self._ws.send_str(msg)
 
     async def close(self):
+        if self.closed:
+            return
         self.closed = True
         await asyncio.gather(*self._scheduled_tasks)
         await self._ws.close()
@@ -60,7 +63,8 @@ class WAMPApplication(base.WAMPApplication):
         ws = web.WebSocketResponse(protocols=self.WS_PROTOCOLS)
         await ws.prepare(request)
 
-        transport = WSTransport(request, ws)
+        loop = get_event_loop()
+        transport = WSTransport(request, ws, loop)
         if self.broker:
             wamp_protocol = WAMPProtocol(
                 transport=transport,
@@ -75,7 +79,9 @@ class WAMPApplication(base.WAMPApplication):
                 rpc_handler=self.router.handle_rpc_call,
                 **self._protocol_kwargs
             )
-        wamp_protocol.handle_websocket_open()
+        open_handler_task = loop.create_task(
+            wamp_protocol.handle_websocket_open()
+        )
 
         async for msg in ws:
             if msg.type == WSMsgType.TEXT:
@@ -84,5 +90,8 @@ class WAMPApplication(base.WAMPApplication):
                 print('ws connection closed with exception %s' % ws.exception())
 
         print('websocket connection closed')
+
+        # Await any remaining background tasks.
+        await open_handler_task
 
         return ws

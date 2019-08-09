@@ -65,7 +65,7 @@ class WAMPProtocol:
     ) -> None:
         self.session = WAMPSession(
             session_id=generate_global_id(),
-            remote=format_sockaddr(transport.get_extra_info('socket').family, transport.get_extra_info('peername'))
+            remote=transport.remote
         )
         self.transport = transport
         self.loop = loop or asyncio.get_event_loop()
@@ -106,9 +106,11 @@ class WAMPProtocol:
             )
             return
 
-        self._identity_authenticated_handler(identity)
+        if self._identity_authenticated_handler:
+            self._identity_authenticated_handler(identity)
         self.do_welcome()
-        self._open_handler(self.session)
+        if self._open_handler:
+            self._open_handler(self.session)
 
     async def do_protocol_violation(self, message=None):
         await self.do_abort('wamp.error.protocol_violation', message)
@@ -293,7 +295,8 @@ class WAMPProtocol:
             await self.do_protocol_violation("Unknown WAMP message type.")
 
     async def handle_websocket_open(self) -> None:
-        self._websocket_open_handler()
+        if self._websocket_open_handler:
+            self._websocket_open_handler()
 
     def send_msg(self, msg: Iterable):
         self.transport.send_msg_soon(serialize(msg))
