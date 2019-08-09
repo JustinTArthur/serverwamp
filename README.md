@@ -1,34 +1,38 @@
 # serverwamp
 Components that add
 [Web Application Messaging Protocol](https://wamp-proto.org/) features to
-WebSocket servers. With serverwamp, an aiohttp server can act as both a WAMP
-broker and dealer.
+WebSocket servers. With serverwamp, a server can act as both a WAMP broker and
+dealer. Currently supports ASGI servers using asyncio or Trio and aiohttp
+servers.
 
 ## Example WAMP Microservice
+This service enables retrieval and removal of documents from a database via
+two RPCs exposed to WAMP clients.
+ 
 ```python
 from aiohttp import web
 from serverwamp.adapters.aiohttp import WAMPApplication
 from serverwamp.rpc import RPCRouteTableDef, RPCError
 
-rpc_routes = RPCRouteTableDef()
+rpc = RPCRouteTableDef()
 
-@rpc_routes.route('myapp:getDoc')
+@rpc.route('docs.getDocument')
 async def get_document(document_id):
     record = await mydb.retrieve(document_id)
     return {'status': 'SUCCESS', 'document': record}
-    
-@rpc_routes.route('myapp:delDoc')
+
+@rpc.route('docs.deleteDocument')
 async def delete_document(document_id):
     succeeded = await mydb.delete(document_id)
     if succeeded:
         return {'status': 'SUCCESS'}
     else:
         raise RPCError('wamp.error.delete_failed', {'status': 'FAILURE'})
-    
+
 
 if __name__ == '__main__':
     wamp = WAMPApplication()
-    wamp.add_rpc_routes(rpc_routes)
+    wamp.add_rpc_routes(rpc)
 
     app = web.Application()
     app.add_routes((web.get('/', wamp.handle),))
@@ -54,7 +58,7 @@ aiohttp, but want to branch into serving over WebSockets.
 * you want a structure for communicating over WebSockets, but want more
 request/response features than the socket.io protocol provides.
 * you want to build a WAMP router.
-### It's not as useful if…
+### It's not useful if…
 * you want to build a WAMP client
   * Consider [Autobahn|Python](https://autobahn.readthedocs.io/) instead.
 * you want a WAMP router out of the box.
@@ -63,9 +67,7 @@ request/response features than the socket.io protocol provides.
 ## Known Deficiencies
 * Project is in the prototyping stages, so documentation isn't available on
 low-level features yet.
-* The out-of-the-box RPC handler does not provide the URI, session ID or call ID
-to the function that the call is routed to. This may be addressed in a later
-version with arg inspection/injection or async context vars.
+
 
 ## Development
 Unit tests can be run with:
