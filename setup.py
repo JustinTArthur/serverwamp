@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='serverwamp',
-    version='0.1.1',
+    version='0.1.2',
     description=('Components that add Web Application Messaging Protocol '
                  'features to WebSocket servers.'),
     long_description=open('README.md').read(),
@@ -20,7 +20,6 @@ setup(
         'Framework :: AsyncIO',
     ),
     install_requires=(
-        'aiohttp>=3.0.0',
         'dataclasses~=0.6;python_version<"3.7"'
     ),
     keywords=(
