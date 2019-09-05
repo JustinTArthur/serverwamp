@@ -7,7 +7,7 @@ from serverwamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
 
 
 def test_route_table():
-    route_table = rpc.RPCRouteTableDef()
+    route_table = rpc.RPCRouteSet()
 
     @route_table.route('sample.uri.1')
     async def sample_handler_1():

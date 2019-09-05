@@ -2,12 +2,13 @@ import json
 import socket
 
 from serverwamp import protocol
+from serverwamp.adapters.base import Transport
 
 
 def test_publish_event():
     sent_msgs = []
 
-    class CollectingTransport:
+    class CollectingTransport(Transport):
         @staticmethod
         def get_extra_info(info_name):
             if info_name == 'peername':
@@ -15,9 +16,14 @@ def test_publish_event():
             elif info_name == 'socket':
                 return socket.socket()
 
-        @staticmethod
-        def send_msg_soon(msg):
+        def send_msg_soon(self, msg):
             sent_msgs.append(msg)
+
+        async def send_msg(self, msg: str) -> None:
+            pass
+
+        async def close(self):
+            pass
 
     proto = protocol.WAMPProtocol(transport=CollectingTransport())
 

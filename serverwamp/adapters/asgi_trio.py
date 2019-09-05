@@ -76,7 +76,7 @@ class WAMPApplication(base.WAMPApplication):
                     msg_text = (
                         event.get('text')
                         or
-                        event.get('data').decode('utf-8')
+                        event['data'].decode('utf-8')
                     )
                     await wamp_protocol.handle_msg(msg_text)
                 elif event_type == 'websocket.disconnect':

@@ -13,6 +13,7 @@ class WSTransport(base.Transport, ABC):
     ) -> None:
         self.closed = False
         self._asgi_send = asgi_send
+        self._remote: Optional[str]
 
         cookies_header = asgi_scope['headers'].get(b'Cookie')
         if cookies_header:

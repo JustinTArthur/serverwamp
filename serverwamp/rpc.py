@@ -1,11 +1,12 @@
 import inspect
-from collections import Mapping
+from collections import Mapping, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, MutableMapping, Union
 
 from serverwamp.helpers import camel_to_snake
-from serverwamp.protocol import WAMPRPCErrorResponse, WAMPRPCResponse
+from serverwamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
+                                 WAMPRPCResponse)
 
 POSITIONAL_PARAM_KINDS = frozenset({
     inspect.Parameter.POSITIONAL_ONLY,
@@ -20,32 +21,39 @@ class WAMPNoSuchProcedureError(Exception):
 
 class Router:
     def __init__(self, camel_snake_conversion=False):
-        self.dispatch_table: MutableMapping[str, Callable[..., Awaitable]] = {}
+        self.dispatch_table: MutableMapping[
+            str, MutableMapping[
+                str, Callable[..., Awaitable]
+            ]
+        ] = defaultdict(dict)
         self.camel_snake_conversion = camel_snake_conversion
 
-    def add_route(self, uri, handler):
-        self.dispatch_table[uri] = handler
+    def add_route(self, uri, handler, realms=None):
+        for realm in (realms or (None,)):
+            self.dispatch_table[realm][uri] = handler
 
-    def resolve(self, uri):
-        try:
-            handler = self.dispatch_table[uri]
-        except KeyError:
+    def resolve(self, realm, uri):
+        handler = (
+            self.dispatch_table.get(realm, {}).get(uri)
+            or self.dispatch_table.get(None, {}).get(uri)
+        )
+        if not handler:
             raise WAMPNoSuchProcedureError('Procedure %s does not exist.', uri)
         return handler
 
-    def add_routes(self, routes):
-        """Append routes to route table.
+    def add_routes(self, routes, realms=None):
+        """Append routes to route table for the given realms.
 
         Parameter should be an iterable of RPCRouteDef objects.
         """
         for route_obj in routes:
-            route_obj.register(self)
+            route_obj.register(self, realms)
 
     async def handle_rpc_call(
         self,
-        rpc_request
+        rpc_request: WAMPRPCRequest
     ) -> Union[WAMPRPCResponse, WAMPRPCErrorResponse]:
-        procedure = self.resolve(rpc_request.uri)
+        procedure = self.resolve(rpc_request.session.realm, rpc_request.uri)
 
         if self.camel_snake_conversion:
             request_kwargs = {
@@ -54,7 +62,7 @@ class Router:
                 in rpc_request.kwargs.items()
             }
         else:
-            request_kwargs = rpc_request.kwargs.copy()
+            request_kwargs = dict(rpc_request.kwargs)
 
         special_params = {
             'request': rpc_request,
@@ -151,21 +159,21 @@ class RPCRouteDef:
         return (f'<RPCRouteDef {self.uri} -> {self.handler.__name__!r}'
                 f'{"".join(info)}>')
 
-    def register(self, router):
-        router.add_route(self.uri, self.handler, **self.kwargs)
+    def register(self, router, realms=None):
+        router.add_route(self.uri, self.handler, realms=realms, **self.kwargs)
 
 
 def route(uri, handler, **kwargs):
     return RPCRouteDef(uri, handler, kwargs)
 
 
-class RPCRouteTableDef(Sequence):
+class RPCRouteSet(Sequence):
     """WAMP RPC route definition table. Similar to aiohttp.web.RouteTableDef"""
     def __init__(self):
         self._items = []
 
     def __repr__(self):
-        return f'<RPCRouteTableDef count={len(self._items)}>'
+        return f'<RPCRouteSet count={len(self._items)}>'
 
     def __getitem__(self, index):
         return self._items[index]

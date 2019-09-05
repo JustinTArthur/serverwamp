@@ -8,8 +8,6 @@ from json import loads as deserialize
 from random import randint
 from typing import Any, Awaitable, Callable, Iterable, Optional
 
-from serverwamp.helpers import format_sockaddr
-
 logger = logging.getLogger(__name__)
 
 
@@ -87,6 +85,9 @@ class WAMPProtocol:
             {},
             'wamp.error.not_implemented'
         ))
+
+    def attach_to_real(self, realm):
+        self.session.realm = realm
 
     async def authenticate(self):
         failures = []
@@ -302,9 +303,10 @@ class WAMPProtocol:
         self.transport.send_msg_soon(serialize(msg))
 
 
-@dataclass(frozen=True)
+@dataclass()
 class WAMPSession:
     session_id: int
+    realm: Optional[str] = None
     remote: Optional[str] = None
 
 

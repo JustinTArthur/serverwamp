@@ -5,24 +5,25 @@ WebSocket servers. With serverwamp, a server can act as both a WAMP broker and
 dealer. Currently supports ASGI servers using asyncio or Trio and aiohttp
 servers.
 
-## Example WAMP Microservice
+## Usage
+### Example
 This service enables retrieval and removal of documents from a database via
 two RPCs exposed to WAMP clients.
  
 ```python
 from aiohttp import web
 from serverwamp.adapters.aiohttp import WAMPApplication
-from serverwamp.rpc import RPCRouteTableDef, RPCError
+from serverwamp.rpc import RPCRouteSet, RPCError
 
-rpc = RPCRouteTableDef()
+docs_api = RPCRouteSet()
 
-@rpc.route('docs.getDocument')
-async def get_document(document_id):
+@docs_api.route('docs.getDocument')
+async def get_doc(document_id):
     record = await mydb.retrieve(document_id)
     return {'status': 'SUCCESS', 'document': record}
 
-@rpc.route('docs.deleteDocument')
-async def delete_document(document_id):
+@docs_api.route('docs.deleteDocument')
+async def delete_doc(document_id):
     succeeded = await mydb.delete(document_id)
     if succeeded:
         return {'status': 'SUCCESS'}
@@ -32,11 +33,65 @@ async def delete_document(document_id):
 
 if __name__ == '__main__':
     wamp = WAMPApplication()
-    wamp.add_rpc_routes(rpc)
+    wamp.add_rpc_routes(docs_api, realm='my_application')
 
     app = web.Application()
     app.add_routes((web.get('/', wamp.handle),))
     web.run_app(app)
+```
+### Type Marshalling
+RPC route handlers can supply type hints that are used to transform call
+arguments passed in from the client.
+```python
+@rpc_api.route('slowlyCountToNumber')
+async def slowly_count(count_to: int, interval: float, taunt: str = 'ah ah ah!'):
+    for i in range(count_to):
+        print(f'{i}, {taunt}')
+        await asyncio.sleep(interval)
+```
+```python
+from decimal import Decimal
+
+@rpc_api.route('storeHighPrecisionTimestamp')
+async def store_timestamp(timestamp: Decimal):
+    pass
+```
+Without type hints, arguments are injected as they were parsed by the
+deserializer (e.g. float for JSON Number).
+
+### Built-in and Custom RPC Handler Arguments
+If an RPC route contains arguments of certain names, these arguments are
+automatically populated.
+
+In this example for trio, a custom `nursery` argument is supplied for running
+background tasks. The built-in argument `session` is requested so a background
+task can later send an event to the session if it subscribed to the relevant
+topic.
+
+```python
+import trio
+from serverwamp.rpc import RPCRouteSet
+from serverwamp.adapters.asgi_trio import WAMPApplication
+
+async def long_running_job(session):
+    await session.send_event('job_events', {'job_status': 'STARTED'})
+    await trio.sleep(3600)
+    await session.send_event('job_events', {'job_status': 'COMPLETED'})
+
+rpc_api = RPCRouteSet()
+
+@rpc_api.route('doJob')
+async def do_job(self, nursery, session):
+    nursery.start_soon(long_running_job(session))
+    return 'Job scheduled.'
+
+async def application(*args, **kwargs):
+    async with trio.open_nursery() as rpc_nursery:
+        wamp = WAMPApplication()
+        wamp.add_default_rpc_arg('nursery', rpc_nursery)
+        wamp.add_rpc_routes(rpc_api)
+
+        return await wamp.asgi_application(*args, **kwargs)
 ```
 
 ## Compared to Traditional WAMP

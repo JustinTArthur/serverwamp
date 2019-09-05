@@ -1,5 +1,5 @@
 import asyncio
-from typing import Awaitable, Callable, Mapping
+from typing import Awaitable, Callable, Mapping, Set
 
 from serverwamp.adapters import asgi_base, base
 from serverwamp.protocol import WAMPProtocol
@@ -16,7 +16,7 @@ class WSTransport(asgi_base.WSTransport):
     ) -> None:
         super().__init__(asgi_scope, asgi_send)
         self._loop = loop
-        self._scheduled_tasks = set()
+        self._scheduled_tasks: Set[asyncio.Task] = set()
 
     def send_msg_soon(self, msg: str) -> None:
         task = self._loop.create_task(self.send_msg(msg))
@@ -68,7 +68,7 @@ class WAMPApplication(base.WAMPApplication):
                 msg_text = (
                     event.get('text')
                     or
-                    event.get('data').decode('utf-8')
+                    event['data'].decode('utf-8')
                 )
                 await wamp_protocol.handle_msg(msg_text)
             elif event_type == 'websocket.disconnect':
