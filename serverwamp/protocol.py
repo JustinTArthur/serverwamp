@@ -78,6 +78,8 @@ class WAMPProtocol:
 
         self.agent_name = agent_name or 'aiohttp-server-wamp'
 
+        self._received_hello = False
+
     def do_unimplemented(self, request_id):
         self.send_msg((
             WAMPMsgType.ERROR,
@@ -86,7 +88,7 @@ class WAMPProtocol:
             'wamp.error.not_implemented'
         ))
 
-    def attach_to_real(self, realm):
+    def attach_to_realm(self, realm: str):
         self.session.realm = realm
 
     async def authenticate(self):
@@ -94,7 +96,10 @@ class WAMPProtocol:
         identity = None
         if self._transport_authenticator:
             try:
-                identity = await self._transport_authenticator(self.transport)
+                identity = await self._transport_authenticator(
+                    self.transport,
+                    realm=self.session.realm
+                )
             except AuthenticationFailure as af:
                 failures.append(af)
         # More authenticators can be checked here.
@@ -151,6 +156,18 @@ class WAMPProtocol:
         elif event.args:
             msg.append(event.args)
         self.send_msg(msg)
+
+    async def recv_hello(self, data):
+        if self._received_hello:
+            await self.do_protocol_violation(
+                'Only one hello allowed per session.'
+            )
+            return
+
+        self._received_hello = True
+        realm = data[1]
+        self.attach_to_realm(realm)
+        await self.authenticate()
 
     async def recv_rpc_call(self, data):
         request_id = data[1]
@@ -281,7 +298,7 @@ class WAMPProtocol:
 
         msg_type = data[0]
         if msg_type == WAMPMsgType.HELLO:
-            await self.authenticate()
+            await self.recv_hello(data)
         elif msg_type == WAMPMsgType.CALL:
             await self.recv_rpc_call(data)
         elif msg_type == WAMPMsgType.SUBSCRIBE:
