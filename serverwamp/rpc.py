@@ -2,7 +2,8 @@ import inspect
 from collections import Mapping, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, MutableMapping, Union
+from typing import (Any, Awaitable, Callable, Iterable, MutableMapping,
+                    Optional, Union)
 
 from serverwamp.helpers import camel_to_snake
 from serverwamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
@@ -28,7 +29,7 @@ class Router:
         ] = defaultdict(dict)
         self.camel_snake_conversion = camel_snake_conversion
 
-    def add_route(self, uri, handler, realms=None):
+    def add_route(self, uri: str, handler, realms: Optional[Iterable[str]]=None):
         for realm in (realms or (None,)):
             self.dispatch_table[realm][uri] = handler
 

@@ -33,7 +33,7 @@ async def delete_doc(document_id):
 
 if __name__ == '__main__':
     wamp = WAMPApplication()
-    wamp.add_rpc_routes(docs_api, realm='my_application')
+    wamp.add_rpc_routes(docs_api)
 
     app = web.Application()
     app.add_routes((web.get('/', wamp.handle),))
