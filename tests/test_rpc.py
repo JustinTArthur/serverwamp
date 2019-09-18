@@ -1,5 +1,8 @@
 import asyncio
 from decimal import Decimal
+from unittest.mock import Mock
+
+import pytest
 
 from serverwamp import rpc
 from serverwamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
@@ -7,7 +10,7 @@ from serverwamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
 
 
 def test_route_table():
-    route_table = rpc.RPCRouteTableDef()
+    route_table = rpc.RPCRouteSet()
 
     @route_table.route('sample.uri.1')
     async def sample_handler_1():
@@ -128,3 +131,70 @@ def test_type_marshaling():
         'string_plus_suffix': 'kwargs_test_string_test_suffix',
         'decimal_plus_int': Decimal(42.0) + 45,
     }
+
+
+def test_realms():
+    route_set = rpc.RPCRouteSet()
+    router = rpc.Router()
+
+    async def any_realm_handler():
+        pass
+    any_realm_handler = Mock(wraps=any_realm_handler)
+
+    async def specific_realm_handler():
+        pass
+    specific_realm_handler = Mock(wraps=specific_realm_handler)
+
+    route_set.route(any_realm_handler)
+    router.add_route(
+        'any_realm_handler',
+        any_realm_handler
+    )
+    router.add_route(
+        'specific_realm_handler',
+        specific_realm_handler,
+        realms=('realm1',)
+    )
+
+    loop = asyncio.get_event_loop()
+
+    realm1_session = WAMPSession(1, realm='realm1')
+    realm1_specific_call = rpc.WAMPRPCRequest(
+        realm1_session,
+        1,
+        {},
+        'specific_realm_handler',
+    )
+    loop.run_until_complete(
+        router.handle_rpc_call(realm1_specific_call)
+    )
+    realm1_any_call = rpc.WAMPRPCRequest(
+        realm1_session,
+        2,
+        {},
+        'any_realm_handler',
+    )
+    loop.run_until_complete(
+        router.handle_rpc_call(realm1_any_call)
+    )
+
+    realm2_session = WAMPSession(2, realm='realm2')
+    realm2_specific_realm1_call = rpc.WAMPRPCRequest(
+        realm2_session,
+        1,
+        {},
+        'specific_realm_handler',
+    )
+    with pytest.raises(rpc.WAMPNoSuchProcedureError):
+        loop.run_until_complete(
+            router.handle_rpc_call(realm2_specific_realm1_call)
+        )
+    realm2_any_call = rpc.WAMPRPCRequest(
+        realm2_session,
+        1,
+        {},
+        'any_realm_handler',
+    )
+    loop.run_until_complete(
+        router.handle_rpc_call(realm2_any_call)
+    )
