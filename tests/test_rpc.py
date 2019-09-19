@@ -133,6 +133,33 @@ def test_type_marshaling():
     }
 
 
+def test_default_args():
+    collected_arg_values = []
+
+    async def rpc_handler(request, factory_default, value_default):
+        collected_arg_values.append(factory_default)
+        collected_arg_values.append(value_default)
+
+    router = rpc.Router()
+    router.add_routes((
+        rpc.route('test_route', rpc_handler),
+    ))
+
+    factory_result = object()
+    factory = Mock(return_value=factory_result)
+    value_arg = object()
+
+    router.set_default_arg('factory_default', factory=factory)
+    router.set_default_arg('value_default', value_arg)
+    request = WAMPRPCRequest(WAMPSession(1), 1, {}, 'test_route')
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(router.handle_rpc_call(request))
+    assert factory.call_count == 1
+    assert collected_arg_values[0] is factory_result
+    assert collected_arg_values[1] is value_arg
+
+
 def test_realms():
     route_set = rpc.RPCRouteSet()
     router = rpc.Router()

@@ -23,13 +23,35 @@ class WAMPNoSuchProcedureError(Exception):
 class Router:
     def __init__(self, camel_snake_conversion=False):
         self.dispatch_table: MutableMapping[
-            str, MutableMapping[
+            Union[str, None], MutableMapping[
                 str, Callable[..., Awaitable]
             ]
         ] = defaultdict(dict)
         self.camel_snake_conversion = camel_snake_conversion
+        self.default_arg_factories: MutableMapping[
+            Union[str, None], MutableMapping[
+                str, Callable[[], Any]
+            ]
+        ] = defaultdict(dict)
 
-    def add_route(self, uri: str, handler, realms: Optional[Iterable[str]]=None):
+    def set_default_arg(
+        self,
+        arg_name,
+        value: Optional[Any] = None,
+        factory: Optional[Callable[[], Any]] = None,
+        realms: Optional[Iterable[str]] = None
+    ):
+        for realm in (realms or (None,)):
+            self.default_arg_factories[realm][arg_name] = ((lambda: value)
+                                                           if factory is None
+                                                           else factory)
+
+    def add_route(
+        self,
+        uri: str,
+        handler,
+        realms: Optional[Iterable[str]] = None
+    ):
         for realm in (realms or (None,)):
             self.dispatch_table[realm][uri] = handler
 
@@ -54,7 +76,8 @@ class Router:
         self,
         rpc_request: WAMPRPCRequest
     ) -> Union[WAMPRPCResponse, WAMPRPCErrorResponse]:
-        procedure = self.resolve(rpc_request.session.realm, rpc_request.uri)
+        realm = rpc_request.session.realm
+        procedure = self.resolve(realm, rpc_request.uri)
 
         if self.camel_snake_conversion:
             request_kwargs = {
@@ -92,6 +115,10 @@ class Router:
             if not value_found:
                 if name in request_kwargs:
                     value = request_kwargs.pop(name)
+                elif name in self.default_arg_factories[realm]:
+                    value = self.default_arg_factories[realm][name]()
+                elif name in self.default_arg_factories[None]:
+                    value = self.default_arg_factories[None][name]()
                 elif param.default is not param.empty:
                     value = param.default
                 else:
@@ -116,6 +143,8 @@ class Router:
             return WAMPRPCResponse(rpc_request, kwargs=result)
         elif isinstance(result, Sequence):
             return WAMPRPCResponse(rpc_request, args=result)
+        elif result is None:
+            return WAMPRPCResponse(rpc_request, args=(None,))
         else:
             raise Exception("Uninterpretable response from RPC handler.")
 

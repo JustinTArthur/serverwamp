@@ -1,8 +1,9 @@
 import enum
 from abc import ABC, abstractmethod
-from typing import Mapping, Optional, Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Mapping, Optional
 
 from serverwamp.rpc import Router
+
 
 @enum.unique
 class IncidentType(enum.Enum):
@@ -52,14 +53,14 @@ class WAMPApplication:
         self.incident_uris = default_incident_uris.copy()
         self._protocol_kwargs = protocol_kwargs
 
-    def add_default_rpc_arg(
+    def set_default_rpc_arg(
         self,
         arg_name,
         value: Optional[Any] = None,
         factory: Optional[Callable] = None,
         realms: Optional[Iterable[str]] = None
     ) -> None:
-        self.router.add_default_arg(arg_name, value, factory, realms)
+        self.router.set_default_arg(arg_name, value, factory, realms)
 
     def add_rpc_routes(self, routes, realms=None):
         self.router.add_routes(routes, realms)

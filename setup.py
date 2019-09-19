@@ -1,8 +1,8 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name='serverwamp',
-    version='0.1.2',
+    version='0.1.3',
     description=('Components that add Web Application Messaging Protocol '
                  'features to WebSocket servers.'),
     long_description=open('README.md').read(),

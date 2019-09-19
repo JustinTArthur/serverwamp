@@ -88,7 +88,7 @@ async def do_job(self, nursery, session):
 async def application(*args, **kwargs):
     async with trio.open_nursery() as rpc_nursery:
         wamp = WAMPApplication()
-        wamp.add_default_rpc_arg('nursery', rpc_nursery)
+        wamp.set_default_rpc_arg('nursery', rpc_nursery)
         wamp.add_rpc_routes(rpc_api)
 
         return await wamp.asgi_application(*args, **kwargs)
