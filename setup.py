@@ -18,12 +18,14 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Internet',
         'Framework :: AsyncIO',
+        'Framework :: Trio',
     ),
     install_requires=(
         'dataclasses~=0.6;python_version<"3.7"'
     ),
     keywords=(
-        'WAMP', 'WebSockets', 'aiohttp', 'RPC', 'pubsub', 'broker', 'dealer'
+        'WAMP', 'WebSockets', 'aiohttp', 'RPC', 'pubsub', 'broker', 'dealer',
+        'ASGI'
     ),
     python_requires=">=3.6",
     author='Justin Turner Arthur',
@@ -31,7 +33,7 @@ setup(
     url='https://github.com/JustinTArthur/serverwamp',
     license='MIT',
     packages=find_packages(exclude=('tests',)),
-    package_data = {
+    package_data={
         'serverwamp': ('py.typed',),
     },
 )
