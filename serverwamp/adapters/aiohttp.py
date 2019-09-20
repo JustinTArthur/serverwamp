@@ -4,12 +4,12 @@ from typing import Set
 
 from aiohttp import WSMsgType, web
 from serverwamp.adapters import base
-from serverwamp.protocol import WAMPProtocol
+from serverwamp.protocol import WAMPProtocol, Transport
 
 get_event_loop = getattr(asyncio, 'get_running_loop', asyncio.get_event_loop)
 
 
-class WSTransport(base.Transport):
+class WSTransport(Transport):
     """Transport for WAMPProtocol objects for sending messages across an aiohttp
     WebSocketResponse."""
     def __init__(

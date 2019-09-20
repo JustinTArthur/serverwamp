@@ -1,6 +1,5 @@
 import enum
-from abc import ABC, abstractmethod
-from typing import Any, Callable, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Optional
 
 from serverwamp.rpc import Router
 
@@ -9,39 +8,10 @@ from serverwamp.rpc import Router
 class IncidentType(enum.Enum):
     AUTHENTICATION_FAILED = enum.auto()
 
+
 default_incident_uris = {
     IncidentType.AUTHENTICATION_FAILED: 'wamp.error.not_authorized'
 }
-
-
-class Transport(ABC):
-    @property
-    def cookies(self) -> Optional[Mapping[str, str]]:
-        return None
-
-    @property
-    def remote(self):
-        return None
-
-    @abstractmethod
-    def send_msg_soon(self, msg: str) -> None:
-        """Send a serialized message to the underlying transport at some point
-        soon. Returns immediately without awaiting any kind of send
-        confirmation."""
-        pass
-
-    @abstractmethod
-    async def send_msg(self, msg: str) -> None:
-        """Send a message to the underlying transport immediately, and block
-        until the underlying send is complete.
-        """
-        pass
-
-    @abstractmethod
-    async def close(self):
-        """Close the underlying transport as soon as any scheduled tasks
-        are complete."""
-        pass
 
 
 class WAMPApplication:
