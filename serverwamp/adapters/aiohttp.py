@@ -3,8 +3,9 @@ from asyncio import Task
 from typing import Set
 
 from aiohttp import WSMsgType, web
+
 from serverwamp.adapters import base
-from serverwamp.protocol import WAMPProtocol, Transport
+from serverwamp.protocol import Transport, WAMPProtocol
 
 get_event_loop = getattr(asyncio, 'get_running_loop', asyncio.get_event_loop)
 
