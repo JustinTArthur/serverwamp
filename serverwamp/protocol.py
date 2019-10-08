@@ -2,7 +2,7 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections import Sequence
-from dataclasses import dataclass, field, InitVar
+from dataclasses import InitVar, dataclass, field
 from enum import IntEnum, unique
 from json import dumps as serialize
 from json import loads as deserialize
@@ -144,6 +144,7 @@ class WAMPProtocol:
             )
             return
 
+        self.session.identity = identity
         if self._identity_authenticated_handler:
             self._identity_authenticated_handler(identity)
         self.do_welcome()
@@ -373,6 +374,7 @@ class WAMPSession:
     realm: Optional[str] = None
     remote: Optional[str] = None
     protocol: InitVar[Optional[WAMPProtocol]] = None
+    identity: Optional[Any] = None
 
     def __post_init__(self, protocol: Optional[WAMPProtocol]):
         self._protocol = protocol
