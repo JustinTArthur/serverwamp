@@ -271,6 +271,7 @@ class WAMPProtocol:
         options = data[2]
         uri = data[3]
 
+        await self.session.add_subscription(topic=uri)
         request = WAMPSubscribeRequest(
             self.session,
             request_id,
@@ -279,7 +280,7 @@ class WAMPProtocol:
         )
 
         try:
-            result = self._subscribe_handler(request)
+            result = await self._subscribe_handler(request)
             if isinstance(result, WAMPSubscribeErrorResponse):
                 result_msg = (
                     WAMPMsgType.ERROR,
@@ -309,6 +310,7 @@ class WAMPProtocol:
         request_id = data[1]
         subscription = data[2]
 
+        await self.session.remove_subscription(subscription)
         request = WAMPUnsubscribeRequest(
             self.session,
             request_id,
@@ -316,7 +318,7 @@ class WAMPProtocol:
         )
 
         try:
-            result = self._unsubscribe_handler(request)
+            result = await self._unsubscribe_handler(request)
             if isinstance(result, WAMPUnsubscribeErrorResponse):
                 result_msg = (
                     WAMPMsgType.ERROR,
@@ -378,17 +380,33 @@ class WAMPSession:
 
     def __post_init__(self, protocol: Optional[WAMPProtocol]):
         self._protocol = protocol
+        self._subscriptions = {}
+        self._subscriptions_ids = {}
 
-    def _subscription_id_for_topic(self, topic):
+    def subscription_id_for_topic(self, topic):
         return hash(topic) & 0xFFFFFFFF
 
+    async def add_subscription(self, topic):
+        subscription_id = self.subscription_id_for_topic(topic)
+        self._subscriptions[topic] = subscription_id
+        self._subscriptions_ids[subscription_id] = topic
+
+    async def remove_subscription(self, subscription_id):
+        topic = self._subscriptions_ids.pop(subscription_id)
+        if topic:
+            self._subscriptions.pop(subscription_id)
+
     async def send_event(self, topic, args=None, kwargs=None):
-        subscription_id = self._subscription_id_for_topic(topic)
+        subscription_id = self._subscriptions.get(topic)
+        if not subscription_id:
+            return False
+
         self._protocol.do_event(
             subscription_id,
             args,
             kwargs
         )
+        return True
 
 
 @dataclass(frozen=True)
