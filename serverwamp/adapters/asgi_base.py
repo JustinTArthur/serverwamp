@@ -2,10 +2,10 @@ from abc import ABC
 from http.cookies import CookieError, SimpleCookie
 from typing import Awaitable, Callable, Mapping, Optional
 
-from serverwamp.adapters import base
+from serverwamp.protocol import Transport
 
 
-class WSTransport(base.Transport, ABC):
+class WSTransport(Transport, ABC):
     def __init__(
         self,
         asgi_scope: Mapping,

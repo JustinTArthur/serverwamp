@@ -2,13 +2,12 @@ import json
 import socket
 
 from serverwamp import protocol
-from serverwamp.adapters.base import Transport
 
 
 def test_publish_event():
     sent_msgs = []
 
-    class CollectingTransport(Transport):
+    class CollectingTransport(protocol.Transport):
         @staticmethod
         def get_extra_info(info_name):
             if info_name == 'peername':
@@ -20,27 +19,18 @@ def test_publish_event():
             sent_msgs.append(msg)
 
         async def send_msg(self, msg: str) -> None:
-            pass
+            sent_msgs.append(msg)
 
         async def close(self):
             pass
 
     proto = protocol.WAMPProtocol(transport=CollectingTransport())
 
-    event1 = protocol.WAMPEvent()
-    proto.publish_event(87624, event1)
-
-    event2 = protocol.WAMPEvent(args=['a1', 'a2', 3, 4, 5])
-    proto.publish_event(87624, event2)
-
-    event3 = protocol.WAMPEvent(kwargs={'k1': 'v1', 1: 2})
-    proto.publish_event(87624, event3)
-
-    event4 = protocol.WAMPEvent(args=(7, 8, 9), kwargs={'k1': 'v1', 1: 2})
-    proto.publish_event(87624, event4)
-
-    event5 = protocol.WAMPEvent(publication=87059872)
-    proto.publish_event(87624, event5)
+    proto.do_event(87624)
+    proto.do_event(87624, args=['a1', 'a2', 3, 4, 5])
+    proto.do_event(87624, kwargs={'k1': 'v1', 1: 2})
+    proto.do_event(87624, args=(7, 8, 9), kwargs={'k1': 'v1', 1: 2})
+    proto.do_event(87624, publication_id=87059872)
 
     assert(len(sent_msgs) == 5)
     for msg in sent_msgs:

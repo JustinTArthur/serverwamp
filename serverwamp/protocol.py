@@ -1,12 +1,13 @@
 import asyncio
 import logging
-from collections import Mapping, Sequence
-from dataclasses import dataclass, field
+from abc import ABC, abstractmethod
+from collections import Sequence
+from dataclasses import InitVar, dataclass, field
 from enum import IntEnum, unique
 from json import dumps as serialize
 from json import loads as deserialize
 from random import randint
-from typing import Any, Awaitable, Callable, Iterable, Optional
+from typing import Any, Awaitable, Callable, Iterable, Mapping, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +46,40 @@ class AuthenticationFailure(Exception):
         self.reason = reason
 
 
+class Transport(ABC):
+    @property
+    def cookies(self) -> Optional[Mapping[str, str]]:
+        return None
+
+    @property
+    def remote(self):
+        return None
+
+    @abstractmethod
+    def send_msg_soon(self, msg: str) -> None:
+        """Send a serialized message to the underlying transport at some point
+        soon. Returns immediately without awaiting any kind of send
+        confirmation."""
+        pass
+
+    @abstractmethod
+    async def send_msg(self, msg: str) -> None:
+        """Send a message to the underlying transport immediately, and block
+        until the underlying send is complete.
+        """
+        pass
+
+    @abstractmethod
+    async def close(self):
+        """Close the underlying transport as soon as any scheduled tasks
+        are complete."""
+        pass
+
+
 class WAMPProtocol:
     def __init__(
         self,
-        transport: Any,
+        transport: Transport,
         *args,
         open_handler: Optional[Callable] = None,
         rpc_handler: Optional[Callable] = None,
@@ -58,12 +89,13 @@ class WAMPProtocol:
         agent_name: Optional[str] = None,
         websocket_open_handler: Optional[Callable] = None,
         identity_authenticated_handler: Optional[Callable] = None,
-        transport_authenticator: Optional[Callable[..., Awaitable[Any]]] = None,
+        transport_authenticator: Optional[Callable[[Transport, str], Awaitable[Any]]] = None,
         **kwargs
     ) -> None:
         self.session = WAMPSession(
             session_id=generate_global_id(),
-            remote=transport.remote
+            remote=transport.remote,
+            protocol=self
         )
         self.transport = transport
         self.loop = loop or asyncio.get_event_loop()
@@ -112,6 +144,7 @@ class WAMPProtocol:
             )
             return
 
+        self.session.identity = identity
         if self._identity_authenticated_handler:
             self._identity_authenticated_handler(identity)
         self.do_welcome()
@@ -131,6 +164,35 @@ class WAMPProtocol:
             }
         ))
 
+    def do_event(
+        self,
+        subscription_id: int,
+        publication_id: Optional[int] = None,
+        args: Optional[Iterable] = None,
+        kwargs: Optional[Mapping] = None,
+        publisher_id: Optional[int] = None,
+        trust_level: Optional[int] = None
+    ) -> int:
+        publication_id = publication_id or generate_global_id()
+        details = {}
+        if publisher_id:
+            details['publisher'] = publisher_id
+        if trust_level:
+            details['trustlevel'] = trust_level
+        msg = [
+            WAMPMsgType.EVENT,
+            subscription_id,
+            publication_id,
+            details,
+        ]
+        if kwargs is not None:
+            msg.append(args or ())
+            msg.append(kwargs)
+        elif args is not None:
+            msg.append(args)
+        self.send_msg(msg)
+        return publication_id
+
     async def do_abort(self, reason, message=None):
         details = {}
         if message:
@@ -142,20 +204,6 @@ class WAMPProtocol:
         msg_type = data[0]
         request_id = data[1]
         self.send_msg((msg_type, request_id, {}, "wamp.error.not_authorized"))
-
-    def publish_event(self, subscription, event):
-        msg = [
-            WAMPMsgType.EVENT,
-            subscription,
-            event.publication,
-            {}
-        ]
-        if event.kwargs:
-            msg.append(event.args)
-            msg.append(event.kwargs)
-        elif event.args:
-            msg.append(event.args)
-        self.send_msg(msg)
 
     async def recv_hello(self, data):
         if self._received_hello:
@@ -223,6 +271,7 @@ class WAMPProtocol:
         options = data[2]
         uri = data[3]
 
+        await self.session.add_subscription(topic=uri)
         request = WAMPSubscribeRequest(
             self.session,
             request_id,
@@ -231,7 +280,7 @@ class WAMPProtocol:
         )
 
         try:
-            result = self._subscribe_handler(request)
+            result = await self._subscribe_handler(request)
             if isinstance(result, WAMPSubscribeErrorResponse):
                 result_msg = (
                     WAMPMsgType.ERROR,
@@ -261,6 +310,7 @@ class WAMPProtocol:
         request_id = data[1]
         subscription = data[2]
 
+        await self.session.remove_subscription(subscription)
         request = WAMPUnsubscribeRequest(
             self.session,
             request_id,
@@ -268,7 +318,7 @@ class WAMPProtocol:
         )
 
         try:
-            result = self._unsubscribe_handler(request)
+            result = await self._unsubscribe_handler(request)
             if isinstance(result, WAMPUnsubscribeErrorResponse):
                 result_msg = (
                     WAMPMsgType.ERROR,
@@ -325,6 +375,38 @@ class WAMPSession:
     session_id: int
     realm: Optional[str] = None
     remote: Optional[str] = None
+    protocol: InitVar[Optional[WAMPProtocol]] = None
+    identity: Optional[Any] = None
+
+    def __post_init__(self, protocol: Optional[WAMPProtocol]):
+        self._protocol = protocol
+        self._subscriptions = {}
+        self._subscriptions_ids = {}
+
+    def subscription_id_for_topic(self, topic):
+        return hash(topic) & 0xFFFFFFFF
+
+    async def add_subscription(self, topic):
+        subscription_id = self.subscription_id_for_topic(topic)
+        self._subscriptions[topic] = subscription_id
+        self._subscriptions_ids[subscription_id] = topic
+
+    async def remove_subscription(self, subscription_id):
+        topic = self._subscriptions_ids.pop(subscription_id)
+        if topic:
+            self._subscriptions.pop(subscription_id)
+
+    async def send_event(self, topic, *args, **kwargs):
+        subscription_id = self._subscriptions.get(topic)
+        if not subscription_id:
+            return False
+
+        self._protocol.do_event(
+            subscription_id,
+            args=args,
+            kwargs=kwargs
+        )
+        return True
 
 
 @dataclass(frozen=True)
