@@ -396,15 +396,15 @@ class WAMPSession:
         if topic:
             self._subscriptions.pop(subscription_id)
 
-    async def send_event(self, topic, args=None, kwargs=None):
+    async def send_event(self, topic, *args, **kwargs):
         subscription_id = self._subscriptions.get(topic)
         if not subscription_id:
             return False
 
         self._protocol.do_event(
             subscription_id,
-            args,
-            kwargs
+            args=args,
+            kwargs=kwargs
         )
         return True
 

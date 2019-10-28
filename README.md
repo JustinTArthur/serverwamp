@@ -74,9 +74,9 @@ from serverwamp.rpc import RPCRouteSet
 from serverwamp.adapters.asgi_trio import WAMPApplication
 
 async def long_running_job(session):
-    await session.send_event('job_events', {'job_status': 'STARTED'})
+    await session.send_event('job_events', job_status='STARTED')
     await trio.sleep(3600)
-    await session.send_event('job_events', {'job_status': 'COMPLETED'})
+    await session.send_event('job_events', job_status='COMPLETED')
 
 rpc_api = RPCRouteSet()
 
