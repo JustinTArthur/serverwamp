@@ -89,7 +89,9 @@ class WAMPProtocol:
         agent_name: Optional[str] = None,
         websocket_open_handler: Optional[Callable] = None,
         identity_authenticated_handler: Optional[Callable] = None,
-        transport_authenticator: Optional[Callable[[Transport, str], Awaitable[Any]]] = None,
+        transport_authenticator: Optional[
+            Callable[[Transport, str], Awaitable[Any]]
+        ] = None,
         **kwargs
     ) -> None:
         self.session = WAMPSession(
@@ -219,18 +221,19 @@ class WAMPProtocol:
 
     async def recv_rpc_call(self, data):
         request_id = data[1]
-        uri = data[2]
-        if len(data) > 3:
-            args = data[3]
+        uri = data[3]
+        if len(data) > 4:
+            args = data[4]
         else:
             args = ()
-        if len(data) > 4:
-            kwargs = data[4]
+        if len(data) > 5:
+            kwargs = data[5]
         else:
             kwargs = {}
 
         if not isinstance(request_id, int) or not isinstance(uri, str):
-            raise Exception()
+            await self.do_protocol_violation(message='Poorly formed RPC call')
+            return
 
         try:
             request = WAMPRPCRequest(
