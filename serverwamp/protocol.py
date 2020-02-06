@@ -148,10 +148,10 @@ class WAMPProtocol:
 
         self.session.identity = identity
         if self._identity_authenticated_handler:
-            self._identity_authenticated_handler(identity)
+            await self._identity_authenticated_handler(self.session, identity)
         self.do_welcome()
         if self._open_handler:
-            self._open_handler(self.session)
+            await self._open_handler(self.session)
 
     async def do_protocol_violation(self, message=None):
         await self.do_abort('wamp.error.protocol_violation', message)
@@ -244,7 +244,7 @@ class WAMPProtocol:
                 args=args,
                 kwargs=kwargs
             )
-            result = self._rpc_handler(request)
+            result = await self._rpc_handler(request)
             if isinstance(result, WAMPRPCErrorResponse):
                 result_msg = (
                     WAMPMsgType.ERROR,
@@ -367,13 +367,13 @@ class WAMPProtocol:
 
     async def handle_websocket_open(self) -> None:
         if self._websocket_open_handler:
-            self._websocket_open_handler()
+            await self._websocket_open_handler()
 
     def send_msg(self, msg: Iterable):
         self.transport.send_msg_soon(serialize(msg))
 
 
-@dataclass()
+@dataclass(eq=False)
 class WAMPSession:
     session_id: int
     realm: Optional[str] = None
