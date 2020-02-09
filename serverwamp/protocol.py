@@ -250,13 +250,19 @@ class WAMPProtocol:
                     WAMPMsgType.ERROR,
                     WAMPMsgType.CALL,
                     request_id,
-                    {},
+                    result.details,
                     result.uri,
                     result.args,
                     result.kwargs
                 )
             else:
-                result_msg = (WAMPMsgType.CALL_RESULT, request_id, result)
+                result_msg = (
+                    WAMPMsgType.CALL_RESULT,
+                    request_id,
+                    result.details,
+                    result.args,
+                    result.kwargs
+                )
         except Exception as e:
             result_msg = (
                 WAMPMsgType.ERROR,
@@ -274,7 +280,7 @@ class WAMPProtocol:
         options = data[2]
         uri = data[3]
 
-        await self.session.add_subscription(topic=uri)
+        subscription_id = await self.session.add_subscription(topic=uri)
         request = WAMPSubscribeRequest(
             self.session,
             request_id,
@@ -290,13 +296,13 @@ class WAMPProtocol:
                     WAMPMsgType.SUBSCRIBE,
                     request_id,
                     result.details,
-                    result.uri
+                    uri
                 )
             else:
                 result_msg = (
                     WAMPMsgType.SUBSCRIBED,
                     request_id,
-                    result.subscription
+                    subscription_id
                 )
         except Exception as e:
             result_msg = (
@@ -304,7 +310,7 @@ class WAMPProtocol:
                 WAMPMsgType.SUBSCRIBE,
                 request_id,
                 {},
-                "wamp.error.exception_during_rpc_call",
+                "wamp.error.server_error",
                 str(e)
             )
         self.send_msg(result_msg)
@@ -393,6 +399,7 @@ class WAMPSession:
         subscription_id = self.subscription_id_for_topic(topic)
         self._subscriptions[topic] = subscription_id
         self._subscriptions_ids[subscription_id] = topic
+        return subscription_id
 
     async def remove_subscription(self, subscription_id):
         topic = self._subscriptions_ids.pop(subscription_id)
