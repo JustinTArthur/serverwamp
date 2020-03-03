@@ -3,6 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import Sequence
 from dataclasses import InitVar, dataclass, field
+from datetime import datetime, timezone
 from enum import IntEnum, unique
 from json import dumps as serialize
 from json import loads as deserialize
@@ -17,7 +18,9 @@ class WAMPMsgType(IntEnum):
     HELLO = 1
     WELCOME = 2
     ABORT = 3
+    CHALLENGE = 4
 
+    GOODBYE = 6
     ERROR = 8
 
     CALL = 48
@@ -487,3 +490,91 @@ class WAMPRPCErrorResponse:
     details: Mapping = field(default_factory=dict)
     args: Sequence = ()
     kwargs: Mapping = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class WAMPGoodbyeRequest(WAMPRequest):
+    request: WAMPRequest
+    uri: str
+    details: Mapping = field(default_factory=dict)
+
+
+def call_result_response_msg(request: WAMPRPCRequest, args=(), kwargs=None) -> Iterable:
+    return (
+        WAMPMsgType.CALL_RESULT,
+        request.request_id,
+        {},
+        args,
+        kwargs
+    )
+
+
+def subscribed_response_msg(request: WAMPSubscribeRequest, subscription_id) -> Iterable:
+    return WAMPMsgType.SUBSCRIBED, request.request_id, subscription_id
+
+
+def unsubscribed_response_msg(request: WAMPUnsubscribeRequest) -> Iterable:
+    return WAMPMsgType.UNSUBSCRIBED, request.request_id
+
+
+def unimplemented_response_msg(request: WAMPRequest) -> Iterable:
+    return (
+        WAMPMsgType.ERROR,
+        request.request_id,
+        {},
+        'wamp.error.not_implemented'
+    )
+
+
+def cra_challenge_msg(challenge_string: str) -> Iterable:
+    return WAMPMsgType.CHALLENGE, 'wampcra', {'challenge': challenge_string}
+
+
+def ticket_challenge_msg() -> Iterable:
+    return WAMPMsgType.CHALLENGE, 'ticket', {}
+
+
+def welcome_msg(session_id, agent_name=None) -> Iterable:
+    details = {
+        'roles': {
+            'broker': {},
+            'dealer': {}
+        }
+    }
+    if agent_name:
+        details['agent'] = agent_name
+    return (
+        WAMPMsgType.WELCOME,
+        session_id,
+        details
+    )
+
+
+def goodbye_msg(reason_uri='wamp.close.goodbye_and_out'):
+    return WAMPMsgType.GOODBYE, {}, reason_uri
+
+
+def cra_challenge_string(
+    session_id: int,
+    auth_id: str,
+    auth_role: str,
+    auth_provider: str,
+    nonce: str,
+    auth_time: Optional[datetime] = None
+) -> str:
+    """Returns a string used in a WAMP CRA challenge using a mix of identifying
+    and random data."""
+    if auth_time is None:
+        auth_time = datetime.now(timezone.utc)
+    challenge_string = serialize(
+        {
+            'authid': auth_id,
+            'authprovider': auth_provider,
+            'authrole': auth_role,
+            'nonce': nonce,
+            'session_id': session_id,
+            'timestamp': auth_time.isoformat()
+        },
+        sort_keys=True
+    )
+    return challenge_string
