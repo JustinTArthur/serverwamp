@@ -423,6 +423,12 @@ class WAMPSession:
 
 
 @dataclass(frozen=True)
+class WAMPHelloRequest:
+    realm_uri: str
+    details: Mapping = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class WAMPRequest:
     session: WAMPSession
     request_id: int
@@ -474,6 +480,42 @@ class WAMPRPCRequest(WAMPRequest):
     args: Sequence = ()
     kwargs: Mapping = field(default_factory=dict)
 
+    @classmethod
+    def from_msg_data(cls, msg_data):
+        request_id = msg_data[0]
+        uri = msg_data[2]
+        if len(msg_data) > 3:
+            args = msg_data[3]
+        else:
+            args = ()
+        if len(msg_data) > 4:
+            kwargs = msg_data[4]
+        else:
+            kwargs = {}
+
+        if not isinstance(request_id, int) or not isinstance(uri, str):
+            raise WAMPMsgParseError('Poorly formed RPC call')
+
+        try:
+            request = WAMPRPCRequest(
+                request_id,
+                uri=uri,
+                options={},
+                args=args,
+                kwargs=kwargs
+            )
+        except Exception as e:
+            result_msg = (
+                WAMPMsgType.ERROR,
+                WAMPMsgType.CALL,
+                request_id,
+                {},
+                'wamp.error.exception_during_rpc_call',
+                str(e)
+            )
+        return cls()
+
+
 
 @dataclass(frozen=True)
 class WAMPRPCResponse:
@@ -509,7 +551,10 @@ def call_result_response_msg(request: WAMPRPCRequest, args=(), kwargs=None) -> I
     )
 
 
-def subscribed_response_msg(request: WAMPSubscribeRequest, subscription_id) -> Iterable:
+def subscribed_response_msg(
+    request: WAMPSubscribeRequest,
+    subscription_id
+) -> Iterable:
     return WAMPMsgType.SUBSCRIBED, request.request_id, subscription_id
 
 
@@ -578,3 +623,26 @@ def cra_challenge_string(
         sort_keys=True
     )
     return challenge_string
+
+
+request_parser_for_msg_type = {
+    WAMPMsgType.HELLO: WAMPHelloRequest.from_msg,
+    WAMPMsgType.CALL: WAMPRPCRequest.from_msg,
+    WAMPMsgType.SUBSCRIBE: WAMPSubscribeRequest.from_msg,
+    WAMPMsgType.UNSUBSCRIBE: WAMPUnsubscribeRequest.from_msg
+}
+
+
+def wamp_request_from_msg(
+    msg: Sequence,
+    session: Optional[WAMPSession]
+) -> WAMPRequest:
+    msg_type, *msg_data = msg[0]
+    if msg_type not in msg_data:
+        raise WAMPMsgParseError('Unsupported request')
+    request = request_parser_for_msg_type[msg_type](msg_data)
+    return request
+
+
+class WAMPMsgParseError(Exception):
+    pass

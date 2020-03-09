@@ -1,13 +1,12 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import (Any, AsyncIterable, Iterable, Optional, Set)
+from typing import Any, AsyncIterable, Iterable, Optional, Set
 
-from serverwamp.protocol import (WAMPRequest,
-                                 WAMPRPCRequest, WAMPSubscribeRequest,
-                                 WAMPUnsubscribeRequest, cra_challenge_msg,
-                                 cra_challenge_string, generate_global_id,
-                                 goodbye_msg, subscribed_response_msg,
-                                 welcome_msg)
+from serverwamp.protocol import (WAMPRequest, WAMPRPCRequest,
+                                 WAMPSubscribeRequest, WAMPUnsubscribeRequest,
+                                 cra_challenge_msg, cra_challenge_string,
+                                 generate_global_id, goodbye_msg,
+                                 subscribed_response_msg, welcome_msg)
 
 NO_MORE_EVENTS = object()
 NO_IDENTITY = object()
@@ -27,10 +26,13 @@ class AbstractAsyncQueue(ABC):
 
 
 class WAMPSession:
-    def __init__(self, transport):
+    def __init__(self, transport, realm, auth_id=None, auth_methods=()):
         self.transport = transport
 
         self.id = generate_global_id()
+        self.auth_id = auth_id
+        self.auth_methods = auth_methods
+        self.realm = realm
         self.user_identity = NO_IDENTITY
         self._request_queues: Set[AbstractAsyncQueue] = set()
         self._said_goodbye = False
@@ -112,18 +114,20 @@ class WAMPSession:
         finally:
             self._request_queues.remove(queue)
 
+    async def abort(self, uri=None, message=None):
+        await self.transport.send_msg(abort_msg(uri, message))
+        self._said_goodbye = True
+        await self.close()
+
     async def close(self):
         if not self._said_goodbye:
             await self.transport.send_msg(goodbye_msg())
-        await self.handle_session_close()
+        for queue in self._request_queues:
+            queue.put_nowait(NO_MORE_EVENTS)
 
     async def handle_incoming_request(self, request: WAMPRequest):
         for queue in self._request_queues:
             queue.put_nowait(request)
-
-    async def handle_session_close(self):
-        for queue in self._request_queues:
-            queue.put_nowait(NO_MORE_EVENTS)
 
 
 class NoSuchSubscription(Exception):
