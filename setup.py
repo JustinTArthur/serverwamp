@@ -21,7 +21,8 @@ setup(
         'Framework :: Trio',
     ),
     install_requires=(
-        'dataclasses~=0.6;python_version<"3.7"'
+        'dataclasses~=0.6;python_version<"3.7"',
+        'msgpack~=1.0.0'
     ),
     keywords=(
         'WAMP', 'WebSockets', 'aiohttp', 'RPC', 'pubsub', 'broker', 'dealer',

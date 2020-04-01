@@ -2,11 +2,13 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, AsyncIterable, Iterable, Optional, Set
 
+from serverwamp.adapters.async_base import AsyncTaskGroup
 from serverwamp.protocol import (WAMPRequest, WAMPRPCRequest,
                                  WAMPSubscribeRequest, WAMPUnsubscribeRequest,
-                                 cra_challenge_msg, cra_challenge_string,
-                                 generate_global_id, goodbye_msg,
-                                 subscribed_response_msg, welcome_msg)
+                                 abort_msg, cra_challenge_msg,
+                                 cra_challenge_string, generate_global_id,
+                                 goodbye_msg, subscribed_response_msg,
+                                 welcome_msg)
 
 NO_MORE_EVENTS = object()
 NO_IDENTITY = object()
@@ -26,7 +28,14 @@ class AbstractAsyncQueue(ABC):
 
 
 class WAMPSession:
-    def __init__(self, transport, realm, auth_id=None, auth_methods=()):
+    def __init__(
+        self,
+        transport,
+        realm,
+        tasks: AsyncTaskGroup,
+        auth_id=None,
+        auth_methods=()
+    ):
         self.transport = transport
 
         self.id = generate_global_id()
@@ -38,7 +47,11 @@ class WAMPSession:
         self._said_goodbye = False
         self._subscriptions = {}
         self._subscriptions_ids = {}
+        self._tasks = tasks
         self._authenticated = False
+
+    def spawn_task(self, fn, *fn_args, **fn_kwargs):
+        self._tasks.spawn(fn, *fn_args, **fn_kwargs)
 
     async def send_raw(self, msg: Iterable):
         await self.transport.send_msg(msg)

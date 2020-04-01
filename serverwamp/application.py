@@ -2,8 +2,9 @@ from dataclasses import dataclass
 from hashlib import sha256
 from hmac import HMAC
 from typing import (Any, Awaitable, Callable, Iterable, MutableMapping,
-                    Optional, Union)
+                    Optional, Union, Type, Mapping, Collection)
 
+from serverwamp.adapters.async_base import AsyncSupport
 from serverwamp.protocol import (WAMPGoodbyeRequest, WAMPHelloRequest,
                                  WAMPMsgParseError, WAMPRPCRequest,
                                  WAMPSubscribeRequest, WAMPUnsubscribeRequest,
@@ -13,7 +14,16 @@ from serverwamp.session import NoSuchSubscription, WAMPSession
 
 
 class WAMPApplication:
-    def __init__(self):
+    def __init__(
+        self,
+        async_support: Optional[Type[AsyncSupport]] = None,
+        synchronize_requests: bool = False
+    ):
+        if async_support:
+            self._async_support = async_support
+        else:
+            from serverwamp.adapters.asyncio import AsyncioAsyncSupport
+            self._async_support = AsyncioAsyncSupport
         self._realms: MutableMapping[str, ApplicationRealm] = {}
         self._router = Router()
         self._request_handlers = {
@@ -22,6 +32,7 @@ class WAMPApplication:
             WAMPSubscribeRequest: WAMPApplication.default_subscribe_handler,
             WAMPUnsubscribeRequest: WAMPApplication.default_unsubscribe_handler
         }
+        self._synchronize_requests = synchronize_requests
 
     async def default_session_handler(
         self,
@@ -33,8 +44,15 @@ class WAMPApplication:
             await realm.custom_auth_handler(session)
         else:
             await self.default_auth_handler(session)
-        async for request in session.iterate_requests():
-            self._request_handlers[type(request)](request)
+
+        if self._synchronize_requests:
+            async for request in session.iterate_requests():
+                handler = self._request_handlers[type(request)]
+                await handler(request)
+        else:
+            async for request in session.iterate_requests():
+                handler = self._request_handlers[type(request)]
+                session.spawn_task(handler, request)
 
     def set_default_rpc_arg(
         self,
@@ -100,35 +118,111 @@ class WAMPApplication:
     async def handle_connection(self, connection):
         msgs = connection.iterate_msgs()
 
-        # They say hello or we show them the door.
+        # They say hello or we show them the door.  TODO: timeout?
         async for msg in msgs:
             try:
-                # TODO timeout?
                 request = wamp_request_from_msg(msg, None)
             except WAMPMsgParseError:
                 await connection.abort('wamp.error.protocol_error',
                                        'Parse error.')
                 return
-            continue
+            break
+        else:
+            # Connection closed instead of saying hello.
+            return
+
         if not isinstance(request, WAMPHelloRequest):
             await connection.abort('wamp.error.protocol_error',
                                    'Unexpected request.')
             return
 
         if request.realm_uri not in self._realms:
-            """TODO abort no such realm or we allow any realm."""
+            await connection.abort('wamp.error.no_such_realm')
+            return
+        realm = self._realms[request.realm_uri]
 
-        session = WAMPSession(
-            connection,
-            request.realm_uri,
-            auth_id=request.details.get('authid', None),
-            auth_methods=request.details.get('authmethods', ())
+        async with self._async_support.launch_task_group() as session_tasks:
+            session = WAMPSession(
+                connection,
+                realm,
+                tasks=session_tasks,
+                auth_id=request.details.get('authid', None),
+                auth_methods=request.details.get('authmethods', ())
+            )
+            if realm.session_handler:
+                await realm.session_handler(session)
+            else:
+                await self.default_session_handler(session)
+                try:
+                    request = wamp_request_from_msg(msg, session)
+                except WAMPMsgParseError:
+                    await connection.abort('wamp.error.protocol_error',
+                                           'Parse error.')
+                    return
+
+    # Support for various web servers/frameworks
+
+    async def aiohttp_websocket_handler(self):
+        from serverwamp.adapters.aiohttp import connection_for_aiohttp_request
+
+        async def handle_aiohttp_request(request):
+            connection = connection_for_aiohttp_request(request)
+            await self.handle_connection(connection)
+
+        return handle_aiohttp_request
+
+    def asgi_application(
+        self,
+        paths: Optional[Collection[str]] = None
+    ):
+        from serverwamp.adapters.asgi import (
+            handle_asgi_path_not_found,
+            connection_for_asgi_invocation
         )
-        async for msg in msgs:
-            try:
-                request = wamp_request_from_msg(msg, session)
-            except WAMPMsgParseError:
-                """TODO"""
+        """Returns an ASGI application callable that serves WAMP on the given
+        paths. Other paths will return a 404. If paths is omitted, any path
+        requested by the user agent will serve WAMP sessions.
+        """
+        async def application_callable(
+            scope: Mapping,
+            receive: Callable[[], Awaitable[Mapping]],
+            send: Callable[[Mapping], Awaitable]
+        ) -> None:
+            if paths and scope['path'] not in paths:
+                return await handle_asgi_path_not_found(scope, receive, send)
+            connection = connection_for_asgi_invocation(scope, receive, send)
+            await self.handle_connection(connection)
+        return application_callable
+
+    def legacy_asgi_application(
+        self,
+        paths: Optional[Collection[str]] = None
+    ):
+        from serverwamp.adapters.asgi import (
+            handle_asgi_path_not_found,
+            connection_for_asgi_invocation
+        )
+
+        def application_callable(
+            scope: Mapping
+        ) -> Callable[
+            [
+                Callable[[], Awaitable[Mapping]],
+                Callable[[Mapping], Awaitable]
+            ],
+            Awaitable
+        ]:
+            async def application_handler(receive, send):
+                if paths and scope['path'] not in paths:
+                    return (
+                        await handle_asgi_path_not_found(scope, receive, send)
+                    )
+                connection = connection_for_asgi_invocation(scope, receive,
+                                                            send)
+                await self.handle_connection(connection)
+            return application_handler
+
+        return application_callable
 
 
 @dataclass
@@ -152,6 +246,7 @@ class ApplicationRealm:
     cra_identity_provider: Callable[[WAMPSession], Awaitable[Any]]
     cra_requirement_provider: Callable[[str, str], Awaitable[CRAAuthRequirement]]
     ticket_auth_handler: Callable[..., Awaitable[Any]]
+    session_handler: Callable[[WAMPSession], Awaitable[None]]
 
 
 def verify_cra_response(response: CRAResponse, secret: Union[bytes, bytearray]):

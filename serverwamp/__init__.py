@@ -1,0 +1,1 @@
+from serverwamp.application import WAMPApplication
