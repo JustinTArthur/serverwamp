@@ -1,4 +1,3 @@
-import json
 import re
 from abc import ABCMeta
 from io import BytesIO
@@ -8,6 +7,7 @@ from typing import (AsyncGenerator, Awaitable, Callable, Mapping, Union)
 import msgpack
 
 from serverwamp.connection import Connection
+from serverwamp.json import serialize as serialize_json, deserialize as deserialize_json
 
 # In order of preference.
 SUPPORTED_WS_PROTOCOLS = (
@@ -135,12 +135,12 @@ class ASGIWebSocketConection(Connection, metaclass=ABCMeta):
 class ASGIJSONWebSocketConnection(ASGIWebSocketConection):
     async def iterate_msgs(self):
         async for ws_msg in self.iterate_ws_msgs('text'):
-            yield json.loads(ws_msg)
+            yield deserialize_json(ws_msg)
 
     async def send_msg(self, msg):
         await self._asgi_send({
             'type': 'websocket.send',
-            'text': json.dumps(msg)
+            'text': deserialize_json(msg)
         })
 
 
@@ -153,14 +153,14 @@ class ASGIBatchedJSONWebSocketConnection(ASGIWebSocketConection):
     async def send_msg(self, msg):
         await self._asgi_send({
             'type': 'websocket.send',
-            'text': json.dumps(msg) + JSON_SPLIT_CHAR
+            'text': serialize_json(msg) + JSON_SPLIT_CHAR
         })
 
     async def send_msgs(self, msgs):
         await self._asgi_send({
             'type': 'websocket.send',
             'text': JSON_SPLIT_CHAR.join(
-                [json.dumps(msg) for msg in msgs] + [JSON_SPLIT_CHAR]
+                [serialize_json(msg) for msg in msgs] + [JSON_SPLIT_CHAR]
             )
         })
 

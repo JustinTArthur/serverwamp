@@ -24,7 +24,7 @@ class AsyncTaskGroup(ABC):
 
 
 class AsyncSupport(ABC):
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def launch_task_group(self) -> AsyncContextManager[AsyncTaskGroup]:
         pass

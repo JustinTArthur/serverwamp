@@ -1,5 +1,4 @@
 import asyncio
-import json
 import re
 from abc import ABCMeta
 from io import BytesIO
@@ -10,6 +9,8 @@ import msgpack
 from aiohttp import WSMsgType, web
 
 from serverwamp.connection import Connection
+from serverwamp.json import (deserialize as deserialize_json,
+                             serialize as serialize_json)
 
 get_event_loop = getattr(asyncio, 'get_running_loop', asyncio.get_event_loop)
 
@@ -65,7 +66,7 @@ class AiohttpJSONWebSocketConnection(AiohttpWebSocketConnection):
     async def iterate_msgs(self):
         async for ws_msg in self._ws:
             if ws_msg.type == WSMsgType.TEXT:
-                yield json.loads(ws_msg.data)
+                yield deserialize_json(ws_msg.data)
 
     async def send_msg(self, msg):
         await self._ws.send_json(
@@ -83,14 +84,14 @@ class AiohttpBatchedJSONWebSocketConnection(AiohttpWebSocketConnection):
 
     async def send_msg(self, msg):
         await self._ws.send_str(
-            json.dumps(msg) + JSON_SPLIT_CHAR,
+            serialize_json(msg) + JSON_SPLIT_CHAR,
             compress=self._compress_outbound
         )
 
     async def send_msgs(self, msgs):
         await self._ws.send_str(
             JSON_SPLIT_CHAR.join(
-                [json.dumps(msg) for msg in msgs] + [JSON_SPLIT_CHAR]
+                [serialize_json(msg) for msg in msgs] + [JSON_SPLIT_CHAR]
             ),
             compress=self._compress_outbound
         )

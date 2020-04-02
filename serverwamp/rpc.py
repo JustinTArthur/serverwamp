@@ -1,13 +1,12 @@
 import inspect
-from collections import Mapping, defaultdict
+from collections import Mapping, defaultdict, AsyncIterator
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (Any, Awaitable, Callable, Iterable, MutableMapping,
                     Optional, Union)
 
 from serverwamp.helpers import camel_to_snake
-from serverwamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
-                                 WAMPRPCResponse)
+from serverwamp.session import WAMPSession
 
 POSITIONAL_PARAM_KINDS = frozenset({
     inspect.Parameter.POSITIONAL_ONLY,
@@ -15,9 +14,42 @@ POSITIONAL_PARAM_KINDS = frozenset({
 })
 PARAM_PASSTHROUGH_TYPES = frozenset({str, inspect.Parameter.empty})
 
+SIMPLE_VALUE_TYPES = (str, bytes, bytearray, memoryview, int, float, bool)
+
 
 class WAMPNoSuchProcedureError(Exception):
     pass
+
+
+@dataclass
+class RPCRequest:
+    """Information about the call request for RPC handlers.
+    """
+    session: WAMPSession
+    uri: str
+    args: Sequence
+    kwargs: Mapping
+    timeout: int = 0
+    disclose_caller: bool = False
+    receive_progress: bool = False
+    partition_route: Optional[str] = None
+
+
+@dataclass
+class RPCResult:
+    args: Sequence = ()
+    kwargs: Mapping = field(default_factory=dict)
+
+
+class RPCProgressReport(RPCResult):
+    """Used to send out intermediate progress results."""
+
+
+@dataclass
+class RPCErrorResult:
+    uri: str
+    args: Sequence = ()
+    kwargs: Mapping = field(default_factory=dict)
 
 
 class Router:
@@ -74,8 +106,8 @@ class Router:
 
     async def handle_rpc_call(
         self,
-        rpc_request: WAMPRPCRequest
-    ) -> Union[WAMPRPCResponse, WAMPRPCErrorResponse]:
+        rpc_request: RPCRequest
+    ) -> AsyncIterator[RPCResult]:
         realm = rpc_request.session.realm
         procedure = self.resolve(realm, rpc_request.uri)
 
@@ -122,8 +154,7 @@ class Router:
                 elif param.default is not param.empty:
                     value = param.default
                 else:
-                    return WAMPRPCErrorResponse(
-                        rpc_request,
+                    yield RPCErrorResult(
                         uri='wamp.error.invalid_argument',
                         kwargs={'message': f'Argument {name} required.'}
                     )
@@ -132,48 +163,22 @@ class Router:
                 if is_passthrough or isinstance(value, param.annotation)
                 else param.annotation(value)
             )
-
-        try:
-            result = await procedure(*call_args, **call_kwargs)
-        except RPCError as error:
-            return self._response_for_rpc_error(rpc_request, error)
-        if isinstance(result, (WAMPRPCResponse, WAMPRPCErrorResponse)):
-            return result
-        elif isinstance(result, Mapping):
-            return WAMPRPCResponse(rpc_request, kwargs=result)
-        elif isinstance(result, Sequence):
-            return WAMPRPCResponse(rpc_request, args=result)
-        elif result is None:
-            return WAMPRPCResponse(rpc_request, args=(None,))
-        else:
-            raise Exception("Uninterpretable response from RPC handler.")
-
-    @staticmethod
-    def _response_for_rpc_error(request, error):
-        args = error.error_arguments
-        if not args:
-            return WAMPRPCErrorResponse(request, uri=error.uri)
-        if isinstance(args, Mapping):
-            return WAMPRPCErrorResponse(
-                request,
-                uri=error.uri,
-                args=(),
-                kwargs=error.error_arguments
-            )
-        elif isinstance(args, Sequence):
-            return WAMPRPCErrorResponse(
-                request,
-                uri=error.uri,
-                args=args
-            )
-        elif isinstance(args, str):
-            return WAMPRPCErrorResponse(
-                request,
-                uri=error.uri,
-                kwargs={
-                    'message': error.error_arguments
-                }
-            )
+            procedure_invocation = procedure(*call_args, **call_kwargs)
+            if isinstance(procedure_invocation, AsyncIterator):
+                while True:
+                    try:
+                        return_value = await procedure_invocation.__anext__()
+                    except StopAsyncIteration:
+                        break
+                    result = _yielded_value_to_result(return_value)
+                    yield result
+                    if not isinstance(result, RPCProgressReport):
+                        # Anything other than a progress report is the final message.
+                        break
+            else:
+                return_value = await procedure_invocation
+                result = _yielded_value_to_result(return_value)
+                yield result
 
 
 @dataclass(frozen=True)
@@ -224,7 +229,20 @@ class RPCRouteSet(Sequence):
         return inner
 
 
-class RPCError(Exception):
-    def __init__(self, uri, error_arguments):
-        self.uri = uri
-        self.error_arguments = error_arguments
+def _yielded_value_to_result(yielded_value):
+    """Takes a value yielded or returned by a route handler and normalizes it
+    as an RPCResult object.
+    """
+    if isinstance(yielded_value, (RPCResult, RPCErrorResult)):
+        return yielded_value
+    if isinstance(yielded_value, Mapping):
+        return RPCResult(kwargs=yielded_value)
+    if (
+            yielded_value is None
+            or isinstance(yielded_value, SIMPLE_VALUE_TYPES)
+    ):
+        return RPCResult(args=yielded_value,)
+    if isinstance(yielded_value, Sequence):
+        return RPCResult(args=yielded_value)
+    else:
+        raise Exception("Uninterpretable response from RPC handler.")

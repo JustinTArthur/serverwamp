@@ -2,22 +2,28 @@ from dataclasses import dataclass
 from hashlib import sha256
 from hmac import HMAC
 from typing import (Any, Awaitable, Callable, Iterable, MutableMapping,
-                    Optional, Union, Type, Mapping, Collection)
+                    Optional, Union, Type, Mapping, Collection, AsyncIterator)
 
 from serverwamp.adapters.async_base import AsyncSupport
 from serverwamp.protocol import (WAMPGoodbyeRequest, WAMPHelloRequest,
                                  WAMPMsgParseError, WAMPRPCRequest,
                                  WAMPSubscribeRequest, WAMPUnsubscribeRequest,
-                                 wamp_request_from_msg)
-from serverwamp.rpc import Router
+                                 wamp_request_from_msg, WAMPRequest)
+from serverwamp.rpc import Router, RPCRequest
 from serverwamp.session import NoSuchSubscription, WAMPSession
+
+ProtocolRequestHandlerMap = Mapping[
+    Type[WAMPRequest],
+    Callable[[WAMPRequest, WAMPSession], Awaitable[None]]
+]
 
 
 class WAMPApplication:
     def __init__(
         self,
         async_support: Optional[Type[AsyncSupport]] = None,
-        synchronize_requests: bool = False
+        synchronize_requests: bool = False,
+        protocol_request_handlers: Optional[ProtocolRequestHandlerMap] = None
     ):
         if async_support:
             self._async_support = async_support
@@ -26,12 +32,16 @@ class WAMPApplication:
             self._async_support = AsyncioAsyncSupport
         self._realms: MutableMapping[str, ApplicationRealm] = {}
         self._router = Router()
-        self._request_handlers = {
-            WAMPGoodbyeRequest: WAMPApplication.default_goodbye_handler,
-            WAMPRPCRequest: WAMPApplication.default_rpc_handler,
-            WAMPSubscribeRequest: WAMPApplication.default_subscribe_handler,
-            WAMPUnsubscribeRequest: WAMPApplication.default_unsubscribe_handler
+
+        self._protocol_request_handlers = {
+            WAMPGoodbyeRequest: default_protocol_goodbye_handler,
+            WAMPRPCRequest: default_protocol_rpc_handler,
+            WAMPSubscribeRequest: default_protocol_subscribe_handler,
+            WAMPUnsubscribeRequest: default_protocol_unsubscribe_handler
         }
+        if protocol_request_handlers:
+            self._protocol_request_handlers.update(protocol_request_handlers)
+
         self._synchronize_requests = synchronize_requests
 
     async def default_session_handler(
@@ -47,27 +57,15 @@ class WAMPApplication:
 
         if self._synchronize_requests:
             async for request in session.iterate_requests():
-                handler = self._request_handlers[type(request)]
-                await handler(request)
+                handler = self._protocol_request_handlers[type(request)]
+                await handler(request, session)
         else:
             async for request in session.iterate_requests():
-                handler = self._request_handlers[type(request)]
-                session.spawn_task(handler, request)
-
-    def set_default_rpc_arg(
-        self,
-        arg_name,
-        value: Optional[Any] = None,
-        factory: Optional[Callable] = None,
-        realms: Optional[Iterable[str]] = None
-    ) -> None:
-        self._router.set_default_arg(arg_name, value, factory, realms)
-
-    def add_rpc_routes(self, routes, realms=None):
-        self._router.add_routes(routes, realms)
+                handler = self._protocol_request_handlers[type(request)]
+                session.spawn_task(handler, request, session)
 
     async def default_auth_handler(self, session):
-        realm = self._realms[session.realm]
+        realm = session.realm
         if realm.transport_auth_handler:
             identity = await realm.transport_auth_handler(session)
             if identity:
@@ -99,21 +97,17 @@ class WAMPApplication:
         await session.abort(uri='wamp.error.authentication_failed',
                             message='Authentication failed.')
 
-    async def default_rpc_handler(self, request):
-        await self._router.handle_rpc_call(rpc_request=request)
+    def set_default_rpc_arg(
+        self,
+        arg_name,
+        value: Optional[Any] = None,
+        factory: Optional[Callable] = None,
+        realms: Optional[Iterable[str]] = None
+    ) -> None:
+        self._router.set_default_arg(arg_name, value, factory, realms)
 
-    async def default_subscribe_handler(self, request):
-        sub_id = await request.session.register_subscription(request.uri)
-        await request.session.mark_subscribed(request, sub_id)
-
-    async def default_unsubscribe_handler(self, request):
-        try:
-            await request.session.unregister_subscription(request.subscription)
-        except NoSuchSubscription:
-            await request.session.subscription
-
-    async def default_goodbye_handler(self, request):
-        await request.session.close()
+    def add_rpc_routes(self, routes, realms=None):
+        self._router.add_routes(routes, realms)
 
     async def handle_connection(self, connection):
         msgs = connection.iterate_msgs()
@@ -253,3 +247,57 @@ def verify_cra_response(response: CRAResponse, secret: Union[bytes, bytearray]):
     hmac = HMAC(key=secret, msg=response.challenge.encode('utf-8'),
                 digestmod=sha256)
     return response.signature.encode('utf-8') == hmac.digest()
+
+
+async def default_protocol_rpc_handler(self, request, session):
+    partition_route = (
+        request.options['rkey']
+        if request.options.get('runmode') == 'partition'
+        else None
+    )
+    rpc_request = RPCRequest(
+        session=session,
+        uri=request.uri,
+        args=request.args,
+        kwargs=request.kwargs,
+        timeout=request.options.get('timeout', 0),
+        disclose_caller=request.options.get('disclose_me', False),
+        receive_progress=request.options.get('receive_progress', False),
+        partition_route=partition_route
+    )
+    invocation = self._router.handle_rpc_call(rpc_request=rpc_request)
+    if isinstance(invocation, AsyncIterator):
+        pass
+
+
+async def default_protocol_subscribe_handler(
+    self,
+    request: WAMPSubscribeRequest,
+    session: WAMPSession
+):
+    sub_id = await session.register_subscription(request.topic)
+    await session.mark_subscribed(request, sub_id)
+
+
+async def default_protocol_unsubscribe_handler(
+    self,
+    request: WAMPUnsubscribeRequest,
+    session: WAMPSession
+):
+    try:
+        await request.session.unregister_subscription(request.subscription)
+    except NoSuchSubscription:
+        await session.send_raw(
+            request_error_msg(
+                request.request_id,
+                'wamp.error.no_such_subscription'
+            )
+        )
+
+
+async def default_protocol_goodbye_handler(
+    self,
+    request: WAMPGoodbyeRequest,
+    session: WAMPSession
+):
+    await session.close()

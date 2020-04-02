@@ -3,9 +3,7 @@ from datetime import datetime
 from typing import Any, AsyncIterable, Iterable, Optional, Set
 
 from serverwamp.adapters.async_base import AsyncTaskGroup
-from serverwamp.protocol import (WAMPRequest, WAMPRPCRequest,
-                                 WAMPSubscribeRequest, WAMPUnsubscribeRequest,
-                                 abort_msg, cra_challenge_msg,
+from serverwamp.protocol import (WAMPRequest, abort_msg, cra_challenge_msg,
                                  cra_challenge_string, generate_global_id,
                                  goodbye_msg, subscribed_response_msg,
                                  welcome_msg)
@@ -30,13 +28,13 @@ class AbstractAsyncQueue(ABC):
 class WAMPSession:
     def __init__(
         self,
-        transport,
+        connection,
         realm,
         tasks: AsyncTaskGroup,
         auth_id=None,
         auth_methods=()
     ):
-        self.transport = transport
+        self.connection = connection
 
         self.id = generate_global_id()
         self.auth_id = auth_id
@@ -54,17 +52,7 @@ class WAMPSession:
         self._tasks.spawn(fn, *fn_args, **fn_kwargs)
 
     async def send_raw(self, msg: Iterable):
-        await self.transport.send_msg(msg)
-
-    async def iterate_rpc_calls(self):
-        async for req in self.iterate_requests():
-            if isinstance(req, WAMPRPCRequest):
-                yield req
-
-    async def iterate_subs_and_unsubs(self):
-        async for req in self.iterate_requests():
-            if isinstance(req, (WAMPSubscribeRequest, WAMPUnsubscribeRequest)):
-                yield req
+        await self.connection.send_msg(msg)
 
     async def request_ticket_authentication(
         self,
@@ -82,10 +70,10 @@ class WAMPSession:
             nonce=nonce,
             auth_time=auth_time
         )
-        await self.transport.send_msg(cra_challenge_msg(challenge_string))
+        await self.connection.send_msg(cra_challenge_msg(challenge_string))
 
     async def request_cra_authentication(self):
-        await self.transport.send_msg()
+        await self.connection.send_msg()
 
     async def register_subscription(self, topic_uri: str) -> int:
         sub_id = self.subscription_id_for_topic(topic_uri)
@@ -99,7 +87,7 @@ class WAMPSession:
         topic_uri = self._subscriptions_ids.pop(sub_id)
 
     async def mark_subscribed(self, request, subscription_id: int):
-        await self.transport.send_msg(subscribed_response_msg(request, sub_id))
+        await self.connection.send_msg(subscribed_response_msg(request, subscription_id))
 
     @staticmethod
     def subscription_id_for_topic(topic):
@@ -108,12 +96,12 @@ class WAMPSession:
     async def mark_authenticated(self):
         if not self._authenticated:
             self._authenticated = True
-            await self.transport.send_msg(welcome_msg(self.id))
+            await self.connection.send_msg(welcome_msg(self.id))
 
     async def iterate_requests(self) -> AsyncIterable[WAMPRequest]:
         """Every call to this will asynchronously iterate the same requests
         coming from clients."""
-        queue = self.transport.async_queue()
+        queue = self.connection.async_queue()
         self._request_queues.add(queue)
         try:
             while True:
@@ -128,13 +116,13 @@ class WAMPSession:
             self._request_queues.remove(queue)
 
     async def abort(self, uri=None, message=None):
-        await self.transport.send_msg(abort_msg(uri, message))
+        await self.connection.send_msg(abort_msg(uri, message))
         self._said_goodbye = True
         await self.close()
 
     async def close(self):
         if not self._said_goodbye:
-            await self.transport.send_msg(goodbye_msg())
+            await self.connection.send_msg(goodbye_msg())
         for queue in self._request_queues:
             queue.put_nowait(NO_MORE_EVENTS)
 
