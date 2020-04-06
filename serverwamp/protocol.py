@@ -218,10 +218,26 @@ def call_result_response_msg(
     return (
         WAMPMsgType.CALL_RESULT,
         request.request_id,
-        {},
+        details,
         args,
         kwargs
     )
+
+
+def call_error_response_msg(
+    request: WAMPRPCRequest,
+    error_uri: str,
+    args: Optional[Sequence] = None,
+    kwargs: Optional[Mapping] = None
+):
+    if kwargs:
+        return (WAMPMsgType.ERROR, WAMPMsgType.CALL, request.request_id, {},
+                error_uri, args or (), kwargs)
+    elif args:
+        return (WAMPMsgType.ERROR, WAMPMsgType.CALL, request.request_id, {},
+                error_uri, args)
+    return (WAMPMsgType.ERROR, WAMPMsgType.CALL, request.request_id, {},
+            error_uri)
 
 
 def subscribed_response_msg(
@@ -229,6 +245,14 @@ def subscribed_response_msg(
     subscription_id
 ) -> Iterable:
     return WAMPMsgType.SUBSCRIBED, request.request_id, subscription_id
+
+
+def unsubscribe_error_response_msg(
+    request: WAMPUnsubscribeRequest,
+    error_uri
+):
+    return (WAMPMsgType.ERROR, WAMPMsgType.UNSUBSCRIBE, request.request_id, {},
+            error_uri)
 
 
 def unsubscribed_response_msg(request: WAMPUnsubscribeRequest) -> Iterable:

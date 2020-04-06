@@ -7,7 +7,8 @@ from typing import (AsyncGenerator, Awaitable, Callable, Mapping, Union)
 import msgpack
 
 from serverwamp.connection import Connection
-from serverwamp.json import serialize as serialize_json, deserialize as deserialize_json
+from serverwamp.json import (serialize as serialize_json,
+                             deserialize as deserialize_json)
 
 # In order of preference.
 SUPPORTED_WS_PROTOCOLS = (

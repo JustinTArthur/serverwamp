@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, AsyncIterable, Iterable, Optional, Set
+from typing import Any, Iterable, Optional
 
 from serverwamp.adapters.async_base import AsyncTaskGroup
-from serverwamp.protocol import (WAMPRequest, abort_msg, cra_challenge_msg,
+from serverwamp.protocol import (abort_msg, cra_challenge_msg,
                                  cra_challenge_string, generate_global_id,
                                  goodbye_msg, subscribed_response_msg,
                                  welcome_msg)
@@ -41,7 +41,6 @@ class WAMPSession:
         self.auth_methods = auth_methods
         self.realm = realm
         self.user_identity = NO_IDENTITY
-        self._request_queues: Set[AbstractAsyncQueue] = set()
         self._said_goodbye = False
         self._subscriptions = {}
         self._subscriptions_ids = {}
@@ -98,23 +97,6 @@ class WAMPSession:
             self._authenticated = True
             await self.connection.send_msg(welcome_msg(self.id))
 
-    async def iterate_requests(self) -> AsyncIterable[WAMPRequest]:
-        """Every call to this will asynchronously iterate the same requests
-        coming from clients."""
-        queue = self.connection.async_queue()
-        self._request_queues.add(queue)
-        try:
-            while True:
-                try:
-                    request = await queue.get()
-                    if request is NO_MORE_EVENTS:
-                        break
-                    yield request
-                finally:
-                    queue.task_done()
-        finally:
-            self._request_queues.remove(queue)
-
     async def abort(self, uri=None, message=None):
         await self.connection.send_msg(abort_msg(uri, message))
         self._said_goodbye = True
@@ -123,12 +105,6 @@ class WAMPSession:
     async def close(self):
         if not self._said_goodbye:
             await self.connection.send_msg(goodbye_msg())
-        for queue in self._request_queues:
-            queue.put_nowait(NO_MORE_EVENTS)
-
-    async def handle_incoming_request(self, request: WAMPRequest):
-        for queue in self._request_queues:
-            queue.put_nowait(request)
 
 
 class NoSuchSubscription(Exception):

@@ -16,7 +16,6 @@ async def delayed_echo(value: str, delay: float = 0):
     await asyncio.sleep(delay)
     return value,
 
-
 if __name__ == '__main__':
     app = serverwamp.Application()
     app.add_rpc_routes(simple_api)

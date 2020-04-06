@@ -1,7 +1,7 @@
 import enum
 from typing import Any, Callable, Iterable, Optional
 
-from serverwamp.rpc import Router
+from serverwamp.rpc import RPCRouter
 
 
 @enum.unique
@@ -18,7 +18,7 @@ class WAMPApplication:
     WS_PROTOCOLS = ('wamp.2.json',)
 
     def __init__(self, router=None, broker=None, **protocol_kwargs):
-        self.router = router or Router()
+        self.router = router or RPCRouter()
         self.broker = broker
         self.incident_uris = default_incident_uris.copy()
         self._protocol_kwargs = protocol_kwargs

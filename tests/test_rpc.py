@@ -38,7 +38,7 @@ def test_router_rpc_handling():
             {'reason': "It just didn't work out."}
         )
 
-    router = rpc.Router()
+    router = rpc.RPCRouter()
     router.add_routes((
         rpc.route('sample.uri', sample_handler),
         rpc.route('sample.uri.with_error', error_handler)
@@ -80,7 +80,7 @@ def test_type_marshaling():
             'decimal_plus_int': a_decimal + an_integer_w_default
         }
 
-    router = rpc.Router()
+    router = rpc.RPCRouter()
     router.add_routes((
         rpc.route('test_route', typed_rpc_handler),
     ))
@@ -140,7 +140,7 @@ def test_default_args():
         collected_arg_values.append(factory_default)
         collected_arg_values.append(value_default)
 
-    router = rpc.Router()
+    router = rpc.RPCRouter()
     router.add_routes((
         rpc.route('test_route', rpc_handler),
     ))
@@ -162,7 +162,7 @@ def test_default_args():
 
 def test_realms():
     route_set = rpc.RPCRouteSet()
-    router = rpc.Router()
+    router = rpc.RPCRouter()
 
     async def any_realm_handler():
         pass

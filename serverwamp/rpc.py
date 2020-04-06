@@ -47,12 +47,12 @@ class RPCProgressReport(RPCResult):
 
 @dataclass
 class RPCErrorResult:
-    uri: str
+    error_uri: str
     args: Sequence = ()
     kwargs: Mapping = field(default_factory=dict)
 
 
-class Router:
+class RPCRouter:
     def __init__(self, camel_snake_conversion=False):
         self.dispatch_table: MutableMapping[
             Union[str, None], MutableMapping[
@@ -227,6 +227,15 @@ class RPCRouteSet(Sequence):
             self._items.append(RPCRouteDef(uri, handler, kwargs))
             return handler
         return inner
+
+
+RPCHandler = Callable[
+    [RPCRequest],
+    Union[
+        Awaitable[Union[RPCResult, RPCErrorResult]],
+        AsyncIterator[Union[RPCProgressReport, RPCResult, RPCErrorResult]]
+    ]
+]
 
 
 def _yielded_value_to_result(yielded_value):
