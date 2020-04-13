@@ -1,3 +1,5 @@
+version: 2
+
 python:
    version: 3.7
    install:
@@ -5,5 +7,3 @@ python:
         path: .
         extra_requirements:
            - docs
-      - method: setuptools
-        path: package
