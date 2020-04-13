@@ -24,6 +24,11 @@ setup(
         'dataclasses~=0.6;python_version<"3.7"',
         'msgpack~=1.0.0'
     ),
+    extras_require={
+        'docs': (
+            'Sphinx==3.0.0',
+        )
+    },
     keywords=(
         'WAMP', 'WebSockets', 'aiohttp', 'RPC', 'pubsub', 'broker', 'dealer',
         'ASGI'
@@ -37,4 +42,7 @@ setup(
     package_data={
         'serverwamp': ('py.typed',),
     },
+    project_urls = {
+        "Documentation": "https://docs.example.com/HelloWorld/",
+    }
 )
