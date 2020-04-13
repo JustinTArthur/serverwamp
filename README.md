@@ -28,7 +28,7 @@ async def delete_doc(document_id):
     if succeeded:
         return {'status': 'SUCCESS'}
     else:
-        raise RPCError('wamp.error.delete_failed', {'status': 'FAILURE'})
+        raise RPCError('wamp.error.delete_failed', kwargs={'status': 'FAILURE'})
 
 
 if __name__ == '__main__':

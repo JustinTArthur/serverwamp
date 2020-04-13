@@ -5,6 +5,10 @@ serverwamp Documentation
    :maxdepth: 2
    :caption: Contents:
 
+   getting_started
+   authentication
+   custom_handlers
+
 
 
 Indices and tables

@@ -17,20 +17,17 @@ async def delayed_echo(value: str, delay: float = 0):
     return value,
 
 
-async def customer_auth_handler(app, realm, session):
+async def customer_auth_handler(session):
     pass
 
 
 if __name__ == '__main__':
-    customers = serverwamp.Realm('customers')
-    customers.add_rpc_routes(simple_api)
-
-    admins = serverwamp.Realm('admins')
-    admins.set_auth_handler()
-
     app = serverwamp.Application()
-    app.add_realm(wamp_realm)
+    customers_realm = app.create_realm('customers')
+    customers_realm.add_rpc_routes(simple_api)
 
+    admins = app.create_realm('admins')
+    admins.add_transport_authenticator(customer_auth_handler)
 
     web_app = web.Application()
     web_app.add_routes((

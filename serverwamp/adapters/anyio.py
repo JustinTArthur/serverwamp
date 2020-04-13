@@ -6,7 +6,7 @@ import anyio
 from serverwamp.adapters.async_base import AsyncSupport, AsyncTaskGroup
 
 
-class TrioAsyncSupport(AsyncSupport):
+class AnyioAsyncSupport(AsyncSupport):
     @asynccontextmanager
     async def launch_task_group(self):
         async with anyio.create_task_group() as anyio_task_group:

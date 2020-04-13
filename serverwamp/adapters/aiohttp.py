@@ -2,7 +2,9 @@ import asyncio
 import re
 from abc import ABCMeta
 from io import BytesIO
-from typing import Optional, Mapping
+from ssl import SSLObject
+from typing import Optional
+
 
 import aiohttp
 import msgpack
@@ -38,10 +40,9 @@ def collect_jsons_from_batch(batch: str):
 def connection_for_aiohttp_request(request: aiohttp.web.Request):
     ws = web.WebSocketResponse(protocols=SUPPORTED_WS_PROTOCOLS)
     await ws.prepare(request)
-    cookies = request.cookies
 
     construct_connection = ws_protocol_connection_classes[ws.ws_protocol]
-    connection = construct_connection(ws, cookies)
+    connection = construct_connection(ws, request)
     return connection
 
 
@@ -49,14 +50,27 @@ class AiohttpWebSocketConnection(Connection, metaclass=ABCMeta):
     def __init__(
         self,
         ws: aiohttp.web.WebSocketResponse,
-        cookies: Optional[Mapping[str, str]],
+        request: aiohttp.web.Request,
         compress_outbound=False
     ):
         super().__init__()
         self._compress_outbound = compress_outbound
         self._ws = ws
 
-        self.transport_info['http_cookies'] = cookies
+        self.transport_info['http_cookies'] = request.cookies
+        self.transport_info['http_path'] = request.path
+        self.transport_info['http_path_raw'] = request.raw_path
+        self.transport_info['peer_address'] = request.remote
+        self.transport_info['peer_certificate'] = (
+            request.transport.get_extra_info('peercert')
+        )
+        ssl_obj: Optional[SSLObject] = (
+            request.transport.get_extra_info('ssl_object')
+        )
+        if ssl_obj:
+            self.transport_info['peer_certificate_raw'] = (
+                ssl_obj.getpeercert(binary_form=True)
+            )
 
     async def close(self):
         await self._ws.close()
