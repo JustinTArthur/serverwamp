@@ -27,7 +27,9 @@ configured
     admins_realm.set_ticket_authenticator(admin_token_auth)
     admins_realm.add_routes(admin_api)
 
-    app.add_realms(guests_realm, customers_realm, admins_realm)
+    app.add_realm(guests_realm)
+    app.add_realm(customers_realm)
+    app.add_realm(admin_realm)
 
 
 The default realm can be disabled during application setup:
@@ -42,16 +44,16 @@ aborted with a ``wamp.error.no_such_realm`` error during session establishment.
 
 Asynchronous Function Behavior
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-serverwamp makes heavy use of async functions to allow code to run concurrently
-while other code is waiting for something like a timer or a network response.
+serverwamp uses asynchronous functions so code can run while other code is
+waiting for something like a timer or a network response.
 
-In Python, asynchronous functions are run using libraries that can
-start, pause, and resume code using operating system mechanics. There are a few
-of these libraries available. By default, serverwamp uses *asyncio* from the
-Python standard library set; however, an alternative asynchronous handling
-library can be used to take advantage of different connection adapters or
-asynchronous handling features in custom application code. It is completely up
-to the serverwamp integrator.
+In Python, async functions are run using libraries that start, pause, and
+resume code based on operating system mechanics. There are a few of these
+libraries available. By default, serverwamp uses *asyncio* from the Python
+standard library set; however, an alternative asynchronous handling library
+can be used to take advantage of different connection adapters or asynchronous
+handling features in custom application code. It is completely up to the
+serverwamp integrator.
 
 Asynchronous handling support other than the default must be specified when
 the app is created:

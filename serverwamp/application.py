@@ -141,9 +141,9 @@ class Application:
         else:
             from serverwamp.adapters.asyncio import AsyncioAsyncSupport
             self._async_support = AsyncioAsyncSupport
-        self._realms: MutableMapping[str, ApplicationRealm] = {}
+        self._realms: MutableMapping[str, Realm] = {}
 
-        self._default_realm = ApplicationRealm() if allow_default_realm else None
+        self._default_realm = Realm() if allow_default_realm else None
 
         self._protocol_request_handlers = {
             WAMPGoodbyeRequest: default_protocol_goodbye_handler,
@@ -156,8 +156,7 @@ class Application:
 
         self._synchronize_requests = synchronize_requests
 
-    def create_realm(self, uri):
-        realm = Realm(uri)
+    def add_realm(self, realm):
         self._realms[realm.uri] = realm
 
     async def default_session_handler(
