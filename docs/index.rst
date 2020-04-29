@@ -6,8 +6,7 @@ serverwamp Documentation
    :caption: Contents:
 
    getting_started
-   authentication
-   custom_handlers
+   advanced_usage
 
 
 

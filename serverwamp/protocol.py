@@ -208,20 +208,19 @@ class WAMPGoodbyeRequest(WAMPRequest):
 
 def call_result_response_msg(
     request: WAMPRPCRequest,
-    args=(),
+    args: Optional[Sequence] = None,
     kwargs=None,
     progress=False
 ) -> Sequence:
     details = {}
     if progress:
         details['progress'] = True
-    return (
-        WAMPMsgType.CALL_RESULT,
-        request.request_id,
-        details,
-        args,
-        kwargs
-    )
+    if kwargs:
+        return (WAMPMsgType.CALL_RESULT, request.request_id, details, args or (),
+                kwargs)
+    if args:
+        return WAMPMsgType.CALL_RESULT, request.request_id, details, args
+    return WAMPMsgType.CALL_RESULT, request.request_id, details
 
 
 def call_error_response_msg(
@@ -233,7 +232,7 @@ def call_error_response_msg(
     if kwargs:
         return (WAMPMsgType.ERROR, WAMPMsgType.CALL, request.request_id, {},
                 error_uri, args or (), kwargs)
-    elif args:
+    if args:
         return (WAMPMsgType.ERROR, WAMPMsgType.CALL, request.request_id, {},
                 error_uri, args)
     return (WAMPMsgType.ERROR, WAMPMsgType.CALL, request.request_id, {},
@@ -303,6 +302,30 @@ def abort_msg(reason_uri, message):
     return WAMPMsgType.ABORT, details, reason_uri
 
 
+def event_msg(
+    subscription_id: int,
+    publication_id: int,
+    args: Optional[Sequence] = (),
+    kwargs: Optional[Mapping] = None,
+    trust_level: Optional[int] = None,
+    specific_topic: Optional[str] = None
+):
+    details = {}
+    if trust_level is not None:
+        details['trustlevel'] = trust_level
+    if specific_topic:
+        details['topic'] = specific_topic
+
+    if kwargs:
+        return (WAMPMsgType.EVENT, subscription_id, publication_id, details,
+                args or (), kwargs)
+    if args:
+        return (WAMPMsgType.EVENT, subscription_id, publication_id, details,
+                args)
+
+    return WAMPMsgType.EVENT, subscription_id, publication_id, details
+
+
 def cra_challenge_string(
     session_id: int,
     auth_id: str,
@@ -355,3 +378,4 @@ class WAMPMsgParseError(Exception):
     """An issue with the types, order, length, or contents of what was presumed
     to be WAMP message data
     """
+    pass

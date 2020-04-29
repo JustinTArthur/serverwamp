@@ -4,9 +4,9 @@ from typing import Any, Iterable, Optional
 
 from serverwamp.adapters.async_base import AsyncTaskGroup
 from serverwamp.protocol import (abort_msg, cra_challenge_msg,
-                                 cra_challenge_string, generate_global_id,
-                                 goodbye_msg, subscribed_response_msg,
-                                 welcome_msg)
+                                 cra_challenge_string, event_msg,
+                                 generate_global_id, goodbye_msg,
+                                 subscribed_response_msg, welcome_msg)
 
 NO_MORE_EVENTS = object()
 NO_IDENTITY = object()
@@ -51,6 +51,19 @@ class WAMPSession:
         self._tasks.spawn(fn, *fn_args, **fn_kwargs)
 
     async def send_raw(self, msg: Iterable):
+        await self.connection.send_msg(msg)
+
+    async def send_event(self, topic, args=(), kwargs=None, trustlevel=None):
+        if topic not in self._subscriptions:
+            return
+
+        subscription_id = self._subscriptions[topic]
+        msg = event_msg(
+            subscription_id=subscription_id,
+            publication_id=generate_global_id(),
+            args=args,
+            kwargs=kwargs
+        )
         await self.connection.send_msg(msg)
 
     async def request_ticket_authentication(
