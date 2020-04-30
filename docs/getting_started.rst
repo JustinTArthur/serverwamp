@@ -61,7 +61,7 @@ arguments are available.
         # filename is a regular WAMP RPC call argument, session is supplied
         # by serverwamp
         if session.connection.transport_info['peer_address'] != '127.0.0.1':
-            return RPCError(args=('Not authorized',))
+            return RPCErrorResult(args=('Not authorized',))
 
         with open(filename, 'r') as file:
             return file.read()
@@ -118,12 +118,12 @@ by constructing an ``RPCResult``.
 Error responses:
 """"""""""""""""
 You can respond to the caller to let them know an error has occurred by
-returning an ``RPCError``. Just like regular results, errors can have
+returning an ``RPCErrorResult``. Just like regular results, errors can have
 arguments.
 
 .. code-block:: python
 
-    return serverwamp.RPCError(
+    return serverwamp.RPCErrorResult(
         kwargs={
             'errorCode': 'BAD_INPUT'
             'errorMessage': 'You should have supplied a number instead of a string.'
@@ -135,9 +135,9 @@ Progressive responses:
 """"""""""""""""""""""
 An RPC handler function can push progress reports down to clients waiting for a
 result by fashioning your RPC handler as an asynchronous iterator that produces
-any number of RPCProgressReports followed by a final RPCResult or RPCError. The
-easiest way to create an RPC handler like this is by making an asynchronous
-generator function.
+any number of RPCProgressReports followed by a final ``RPCResult`` or
+``RPCErrorResult``. The easiest way to create an RPC handler like this is by
+making an asynchronous generator function.
 
 .. code-block:: python
 
@@ -218,9 +218,8 @@ supply one or more authenticator functions.
 A realm can have any number of transport authenticators, but only one
 challenge-based authenticator like ticket or CRA. If no transport authenticator
 has marked the session as authenticated, then severwamp will proceed with any
-supplied challenge-based authenticator. If no supplied authenticators marked
-the session as authenticated or raised a ``serverwamp.AuthenticationError``
-exception then the session will be aborted as having failed authentication.
+supplied challenge-based authenticator. If no authenticators return
+an identity, the session will be aborted as having failed authentication.
 
 
 Transport Authenticator
@@ -248,11 +247,11 @@ a valid identity:
 
 • ``session.auth_id`` (the WAMP authentication ID if provided, e.g.
   username)
-• ``session.transport_info['http_cookies']`` (mapping of cookie keys to
+• ``session.connection.transport_info['http_cookies']`` (mapping of cookie keys to
   value)
-• ``session.transport_info['peer_certificate']`` (if WAMP peer connected
+• ``session.connection.transport_info['peer_certificate']`` (if WAMP peer connected
   with SSL or TLS)
-• ``session.transport_info['peer_address']`` String of IP address or Unix
+• ``session.connection.transport_info['peer_address']`` String of IP address or Unix
   path of the WAMP peer.
 
 Ticket Authenticator
