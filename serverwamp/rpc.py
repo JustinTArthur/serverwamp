@@ -1,9 +1,8 @@
 import inspect
-from collections import Mapping, defaultdict, AsyncIterator
+from collections import AsyncIterator, Mapping
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import (Any, Awaitable, Callable, Iterable, MutableMapping,
-                    Optional, Union)
+from typing import Any, Awaitable, Callable, MutableMapping, Optional, Union
 
 from serverwamp.helpers import camel_to_snake
 from serverwamp.session import WAMPSession
@@ -54,62 +53,45 @@ class RPCErrorResult:
 
 class RPCRouter:
     def __init__(self, camel_snake_conversion=False):
-        self.dispatch_table: MutableMapping[
-            Union[str, None], MutableMapping[
-                str, Callable[..., Awaitable]
-            ]
-        ] = defaultdict(dict)
+        self.dispatch_table: MutableMapping[str, Callable[..., Awaitable]] = {}
         self.camel_snake_conversion = camel_snake_conversion
-        self.default_arg_factories: MutableMapping[
-            Union[str, None], MutableMapping[
-                str, Callable[[], Any]
-            ]
-        ] = defaultdict(dict)
+        self.default_arg_factories: MutableMapping[str, Callable[[], Any]] = {}
 
     def set_default_arg(
         self,
         arg_name,
         value: Optional[Any] = None,
         factory: Optional[Callable[[], Any]] = None,
-        realms: Optional[Iterable[str]] = None
     ):
-        for realm in (realms or (None,)):
-            self.default_arg_factories[realm][arg_name] = ((lambda: value)
-                                                           if factory is None
-                                                           else factory)
+        self.default_arg_factories[arg_name] = ((lambda: value)
+                                                if factory is None
+                                                else factory)
 
     def add_route(
         self,
         uri: str,
         handler,
-        realms: Optional[Iterable[str]] = None
     ):
-        for realm in (realms or (None,)):
-            self.dispatch_table[realm][uri] = handler
+        self.dispatch_table[uri] = handler
 
-    def resolve(self, realm, uri):
-        handler = (
-            self.dispatch_table.get(realm, {}).get(uri)
-            or self.dispatch_table.get(None, {}).get(uri)
-        )
+    def resolve(self, uri):
+        handler = self.dispatch_table.get(uri)
         if not handler:
             raise WAMPNoSuchProcedureError('Procedure %s does not exist.', uri)
         return handler
 
-    def add_routes(self, routes, realms=None):
-        """Append routes to route table for the given realms.
-
+    def add_routes(self, routes):
+        """Append routes to route table.
         Parameter should be an iterable of RPCRouteDef objects.
         """
         for route_obj in routes:
-            route_obj.register(self, realms)
+            route_obj.register(self)
 
     async def handle_rpc_call(
         self,
         rpc_request: RPCRequest
     ) -> AsyncIterator[RPCResult]:
-        realm = rpc_request.session.realm
-        procedure = self.resolve(realm, rpc_request.uri)
+        procedure = self.resolve(rpc_request.uri)
 
         if self.camel_snake_conversion:
             request_kwargs = {
@@ -147,17 +129,16 @@ class RPCRouter:
             if not value_found:
                 if name in request_kwargs:
                     value = request_kwargs.pop(name)
-                elif name in self.default_arg_factories[realm]:
-                    value = self.default_arg_factories[realm][name]()
-                elif name in self.default_arg_factories[None]:
-                    value = self.default_arg_factories[None][name]()
+                elif name in self.default_arg_factories:
+                    value = self.default_arg_factories[name]()
                 elif param.default is not param.empty:
                     value = param.default
                 else:
                     yield RPCErrorResult(
-                        uri='wamp.error.invalid_argument',
+                        error_uri='wamp.error.invalid_argument',
                         kwargs={'message': f'Argument {name} required.'}
                     )
+                    return
             call_args.append(
                 value
                 if is_passthrough or isinstance(value, param.annotation)
@@ -194,8 +175,8 @@ class RPCRouteDef:
         return (f'<RPCRouteDef {self.uri} -> {self.handler.__name__!r}'
                 f'{"".join(info)}>')
 
-    def register(self, router, realms=None):
-        router.add_route(self.uri, self.handler, realms=realms, **self.kwargs)
+    def register(self, router):
+        router.add_route(self.uri, self.handler, **self.kwargs)
 
 
 def route(uri, handler, **kwargs):

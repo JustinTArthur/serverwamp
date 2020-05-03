@@ -97,7 +97,7 @@ RPC Calls
 ^^^^^^^^^
 If you don't want to use the built-in call router, a custom handler can be
 supplied to handle procedure calls however you want. Routes registered with
-:code:`Application.add_routes` or :code:`Realm.add_routes` will not be used in
+``Application.add_routes`` or ``Realm.add_routes`` will not be used in
 this case.
 
 A basic RPC handler either returns an :py:meth:`~serverwamp.rpc.RPCResult` or
@@ -116,6 +116,8 @@ an :py:meth:`~serverwamp.rpc.RPCError`.
         else:
             return RPCErrorResult('myapp.custom_error')
 
+    my_realm.set_rpc_handler(rpc_handler)
+
 Progressive results are also supported by supplying a handler that returns
 and async iterator that produces any number of
 :py:meth:`~serverwamp.rpc.RPCProgressReport`\ s and a final
@@ -125,7 +127,8 @@ An async generator is the easiest way to do this:
 
 .. code-block:: python
 
-    from serverwamp.rpc import RPCProgressReport, RPCRequest, RPCResult, RPCErrorResult
+    from serverwamp.rpc import (RPCProgressReport, RPCRequest, RPCResult,
+                                RPCErrorResult)
 
     async def rpc_handler(rpc_request: RPCRequest) -> Any:
         if rpc_request.uri != 'add_stuff':

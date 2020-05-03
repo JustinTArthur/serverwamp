@@ -1,19 +1,21 @@
 from dataclasses import dataclass
 from hashlib import sha256
 from hmac import HMAC
-from typing import (Any, Awaitable, Callable, Iterable, MutableMapping,
-                    Optional, Union, Type, Mapping, Collection, AsyncIterator)
+from typing import (Any, AsyncIterator, Awaitable, Callable, Collection,
+                    Mapping, MutableMapping, MutableSequence, Optional, Type,
+                    Union)
 
 from serverwamp.adapters.async_base import AsyncSupport
 from serverwamp.protocol import (WAMPGoodbyeRequest, WAMPHelloRequest,
-                                 WAMPMsgParseError, WAMPRPCRequest,
-                                 WAMPSubscribeRequest, WAMPUnsubscribeRequest,
-                                 wamp_request_from_msg, WAMPRequest,
-                                 unsubscribe_error_response_msg,
+                                 WAMPMsgParseError, WAMPRequest,
+                                 WAMPRPCRequest, WAMPSubscribeRequest,
+                                 WAMPUnsubscribeRequest,
+                                 call_error_response_msg,
                                  call_result_response_msg,
-                                 call_error_response_msg)
-from serverwamp.rpc import (RPCRouter, RPCRequest, RPCErrorResult,
-                            RPCProgressReport, RPCHandler)
+                                 unsubscribe_error_response_msg,
+                                 wamp_request_from_msg)
+from serverwamp.rpc import (RPCErrorResult, RPCHandler, RPCProgressReport,
+                            RPCRequest, RPCRouter)
 from serverwamp.session import NoSuchSubscription, WAMPSession
 
 ProtocolRequestHandlerMap = Mapping[
@@ -21,50 +23,74 @@ ProtocolRequestHandlerMap = Mapping[
     Callable[[WAMPRequest, WAMPSession], Awaitable[None]]
 ]
 
+TransportAuthenticator = Callable[[WAMPSession], Awaitable[Any]]
+TicketAuthenticator = Callable[[WAMPSession, str], Awaitable[Any]]
+
+
+@dataclass
+class CRAAuthRequirement:
+    secret: bytes
+    auth_role: str
+    auth_provider: str
+
+
+CRARequirementProvider = Callable[[WAMPSession], Awaitable[CRAAuthRequirement]]
+
 
 class Realm:
     def __init__(
         self,
-        uri: Optional[str] = None,
-        custom_auth_handler: Optional[
-            Callable[[str, WAMPSession], Awaitable[Any]]
-        ] = None,
-        transport_auth_handler: Optional[
-            Callable[[WAMPSession], Awaitable[Any]]
-        ] = None,
-        cra_identity_provider: Optional[
-            Callable[[WAMPSession], Awaitable[Any]]
-        ] = None,
-        cra_requirement_provider: Optional[
-            Callable[[str, str], Awaitable[CRAAuthRequirement]]
-        ] = None,
-        ticket_auth_handler: Optional[
-            Callable[..., Awaitable[Any]]
-        ] = None,
-        session_handler: Optional[
-            Callable[[WAMPSession], Awaitable[None]]
-        ] = None
+        uri: Optional[str] = None
     ):
+        self.uri = uri
         self._router = RPCRouter()
-        if self.rpc_handler:
-            self._handle_rpc_call = rpc_handler
-        else:
-            self._handle_rpc_call = self._router.handle_rpc_call
+        self._authenticate_session = self.default_auth_handler
+        self._handle_rpc_call = self._router.handle_rpc_call
+        self._authenticate_ticket: Optional[TicketAuthenticator] = None
+        self._transport_authenticators: MutableSequence[TransportAuthenticator] = []
+        self._get_cra_requirement: Optional[CRARequirementProvider] = None
+        self._identify_cra_session = None
+
+    async def set_authentication_handler(
+        self,
+        authentication_handler: Callable[[str, WAMPSession], Awaitable[Any]]
+    ):
+        self._authenticate_session = authentication_handler
+
+    async def set_rpc_handler(self, rpc_handler: RPCHandler):
+        self._handle_rpc_call = rpc_handler
+
+    async def add_transport_authenticator(
+        self,
+        transport_authenticator: TransportAuthenticator
+    ):
+        if transport_authenticator not in self._transport_authenticators:
+            self._transport_authenticators.append(transport_authenticator)
+
+    async def set_cra_handlers(
+        self,
+        requirement_provider: CRARequirementProvider,
+        identity_provider: Callable[[WAMPSession], Awaitable[Any]]
+    ):
+        self._get_cra_requirement = requirement_provider
+        self._identify_cra_session = identity_provider
+
+    async def set_ticket_authenticator(
+        self,
+        ticket_authenticator: TicketAuthenticator
+    ):
+        self._authenticate_ticket = ticket_authenticator
 
     async def default_auth_handler(self, session):
-        realm = session.realm
-        if realm.transport_auth_handler:
-            identity = await realm.transport_auth_handler(session)
+        for authenticate in self._transport_authenticators:
+            identity = await authenticate(session)
             if identity:
                 await session.mark_authenticated(identity)
                 return
 
-        if 'wampcra' in session.auth_methods and realm.cra_requirement_provider:
+        if 'wampcra' in session.auth_methods and self._get_cra_requirement:
             cra_requirement = await (
-                realm.cra_requirement_provider(
-                    realm.uri,
-                    session.auth_id
-                )
+                self._get_cra_requirement(session)
             )
             response = await session.request_cra_auth(
                 session.auth_id,
@@ -72,13 +98,13 @@ class Realm:
                 cra_requirement.auth_provider
             )
             if verify_cra_response(response, cra_requirement.secret):
-                identity = await realm.cra_identity_provider(session)
+                identity = await self._identify_cra_session(session)
                 if identity:
                     await session.mark_authenticated(identity)
                     return
-        elif 'ticket' in session.auth_methods and realm.ticket_auth_handler:
+        elif 'ticket' in session.auth_methods and self._authenticate_ticket:
             ticket = await session.request_ticket_auth()
-            identity = await realm.ticket_auth_handler(session, ticket)
+            identity = await self._authenticate_ticket(session, ticket)
             if identity:
                 await session.mark_authenticated(identity)
                 return
@@ -91,12 +117,17 @@ class Realm:
         arg_name,
         value: Optional[Any] = None,
         factory: Optional[Callable] = None,
-        realms: Optional[Iterable[str]] = None
     ) -> None:
-        self._router.set_default_arg(arg_name, value, factory, realms)
+        self._router.set_default_arg(arg_name, value, factory)
 
-    def add_rpc_routes(self, routes, realms=None):
-        self._router.add_routes(routes, realms)
+    def add_rpc_routes(self, routes):
+        self._router.add_routes(routes)
+
+
+@dataclass
+class CRAResponse:
+    signature: str
+    challenge: str
 
 
 def verify_cra_response(response: CRAResponse, secret: Union[bytes, bytearray]):
@@ -145,12 +176,16 @@ class Application:
 
         self._default_realm = Realm() if allow_default_realm else None
 
-        self._protocol_request_handlers = {
+        self._protocol_request_handlers: MutableMapping[
+            WAMPRequest,
+            Callable[[WAMPRequest, WAMPSession], Awaitable]
+        ] = {
             WAMPGoodbyeRequest: default_protocol_goodbye_handler,
             WAMPRPCRequest: default_protocol_rpc_handler,
             WAMPSubscribeRequest: default_protocol_subscribe_handler,
             WAMPUnsubscribeRequest: default_protocol_unsubscribe_handler
         }
+
         if protocol_request_handlers:
             self._protocol_request_handlers.update(protocol_request_handlers)
 
@@ -165,11 +200,10 @@ class Application:
     ):
         connection = session.connection
         realm = session.realm
-        # Try auth handlers if there are any.
-        if realm.custom_auth_handler:
-            await realm.custom_auth_handler(session)
-        else:
-            await self.default_auth_handler(session)
+
+        realm._authenticate_session(session)
+        if not session.is_open:
+            return
 
         # Technically, once the session is authenticated, order is not
         # important to the WAMP protocol itself; messages expecting responses
@@ -202,12 +236,11 @@ class Application:
         arg_name,
         value: Optional[Any] = None,
         factory: Optional[Callable] = None,
-        realms: Optional[Iterable[str]] = None
     ) -> None:
-        self._router.set_default_arg(arg_name, value, factory, realms)
+        self._default_realm.set_default_rpc_arg(arg_name, value, factory)
 
     def add_rpc_routes(self, routes, realms=None):
-        self._router.add_routes(routes, realms)
+        self._default_realm.add_rpc_routes(routes)
 
     async def handle_connection(self, connection):
         msgs = connection.iterate_msgs()
@@ -366,22 +399,6 @@ class Application:
             return application_handler
 
         return application_callable
-
-
-@dataclass
-class CRAAuthRequirement:
-    secret: bytes
-    auth_role: str
-    auth_provider: str
-
-
-@dataclass
-class CRAResponse:
-    signature: str
-    challenge: str
-
-
-
 
 
 async def default_protocol_goodbye_handler(
