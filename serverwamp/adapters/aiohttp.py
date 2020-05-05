@@ -5,14 +5,13 @@ from io import BytesIO
 from ssl import SSLObject
 from typing import Optional
 
-
 import aiohttp
 import msgpack
 from aiohttp import WSMsgType, web
 
 from serverwamp.connection import Connection
-from serverwamp.json import (deserialize as deserialize_json,
-                             serialize as serialize_json)
+from serverwamp.json import deserialize as deserialize_json
+from serverwamp.json import serialize as serialize_json
 
 get_event_loop = getattr(asyncio, 'get_running_loop', asyncio.get_event_loop)
 
@@ -37,7 +36,7 @@ def collect_jsons_from_batch(batch: str):
     return batch.split(JSON_SPLIT_CHAR)
 
 
-def connection_for_aiohttp_request(request: aiohttp.web.Request):
+async def connection_for_aiohttp_request(request: aiohttp.web.Request):
     ws = web.WebSocketResponse(protocols=SUPPORTED_WS_PROTOCOLS)
     await ws.prepare(request)
 
@@ -60,6 +59,7 @@ class AiohttpWebSocketConnection(Connection, metaclass=ABCMeta):
         self.transport_info['http_cookies'] = request.cookies
         self.transport_info['http_path'] = request.path
         self.transport_info['http_path_raw'] = request.raw_path
+        self.transport_info['http_query_string'] = request.query_string
         self.transport_info['peer_address'] = request.remote
         self.transport_info['peer_certificate'] = (
             request.transport.get_extra_info('peercert')

@@ -1,14 +1,15 @@
-from contextlib import asynccontextmanager
 from functools import partial
 
 import anyio
 
 from serverwamp.adapters.async_base import AsyncSupport, AsyncTaskGroup
+from serverwamp.context import asynccontextmanager
 
 
 class AnyioAsyncSupport(AsyncSupport):
+    @classmethod
     @asynccontextmanager
-    async def launch_task_group(self):
+    async def launch_task_group(cls):
         async with anyio.create_task_group() as anyio_task_group:
             task_group = AnyioTaskGroup(anyio_task_group)
             yield task_group

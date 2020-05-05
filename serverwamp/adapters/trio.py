@@ -1,15 +1,15 @@
-from contextlib import asynccontextmanager
 from functools import partial
 
 import trio
-import trio_typing
 
 from serverwamp.adapters.async_base import AsyncSupport, AsyncTaskGroup
+from serverwamp.context import asynccontextmanager
 
 
 class TrioAsyncSupport(AsyncSupport):
+    @classmethod
     @asynccontextmanager
-    async def launch_task_group(self):
+    async def launch_task_group(cls):
         async with trio.open_nursery() as nursery:
             task_group = TrioTaskGroup(nursery)
             yield task_group
@@ -17,7 +17,7 @@ class TrioAsyncSupport(AsyncSupport):
 
 class TrioTaskGroup(AsyncTaskGroup):
     """In Trio's case, this is just a light wrapper around Nursery."""
-    def __init__(self, nursery: trio_typing.Nursery):
+    def __init__(self, nursery):
         self._nursery = nursery
 
     async def cancel(self):

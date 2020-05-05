@@ -157,35 +157,41 @@ Sending Events to Clients
 -------------------------
 Given a ``Session`` object, events can be published to the client with
 ``Session.send_event()``. This could happen inside of an RPC procedure, or
-in response to external event (from a message broker for example). To keep
-track of what sessions have subscribed to a topic, you can register methods to
-be called when a session subscribes to or unsubscribes from a topic.
+in response to external event (from a message broker for example).
+
+To keep track of what sessions have subscribed to a topic, you can register a
+function to be called when a session subscribes to a topic. The function should
+return an asynchronous iterator whose first part is the behavior when the
+subscription is established and second part is behavior for when the
+subscription is torn down or the session is closed.
 
 .. code-block:: python
 
-    class UpdatesWorker:
-        def __init__(self):
-            self._to_update = set()
+    events = serverwamp.TopicRouteSet()
 
-        async def handle_subscribe(topic, session):
-            if topic == 'hourly_updates':
-                self._to_update.add(session)
 
-        async def handle_unsubscribe(topic, session):
-            if topic == 'hourly_updates':
-                self._to_update.remove(session)
+    @events.topic('hourly_updates')
+    async def subscribe_to_hourly_updates(topic, session):
+        # On subscribe…
+        self._to_update.add(session)
 
-        async def run():
-            while True:
-                for session in self._to_update():
-                    session.send_event(
-                        args=(f'The hour is {datetime.now():%H}',)
-                    )
-                await asyncio.sleep(60.0)
+        yield
 
-    updates_worker = UpdatesWorker()
-    app.add_subscribe_handler(updates_worker.handle_subscribe)
-    app.add_unsubscribe_handler(updates_worker.handle_unsubscribe)
+        # On unsubscribe or session close…
+        self._to_update.remove(session)
+
+
+    async def run_hourly_updates():
+        while True:
+            for session in self._to_update():
+                session.send_event(
+                    args=(f'The hour is {datetime.now():%H}',)
+                )
+            await asyncio.sleep(60.0)
+
+    app.add_topics(events)
+
+    asyncio.create_task(run_hourly_updates)
 
 Serving Connections
 -------------------
@@ -247,12 +253,12 @@ a valid identity:
 
 • ``session.auth_id`` (the WAMP authentication ID if provided, e.g.
   username)
-• ``session.connection.transport_info['http_cookies']`` (mapping of cookie keys to
-  value)
-• ``session.connection.transport_info['peer_certificate']`` (if WAMP peer connected
-  with SSL or TLS)
-• ``session.connection.transport_info['peer_address']`` String of IP address or Unix
-  path of the WAMP peer.
+• ``session.connection.transport_info['http_cookies']`` (mapping of cookie keys
+  to value)
+• ``session.connection.transport_info['peer_certificate']`` (if WAMP peer
+  connected with SSL or TLS)
+• ``session.connection.transport_info['peer_address']`` String of IP address or
+  Unix path of the WAMP peer.
 
 Ticket Authenticator
 ^^^^^^^^^^^^^^^^^^^^

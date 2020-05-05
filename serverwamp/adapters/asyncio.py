@@ -1,15 +1,16 @@
 import asyncio
-from contextlib import asynccontextmanager
 from typing import Set
 
 from serverwamp.adapters.async_base import AsyncSupport, AsyncTaskGroup
+from serverwamp.context import asynccontextmanager
 
 _schedule_in_loop = getattr(asyncio, 'create_task', asyncio.ensure_future)
 
 
 class AsyncioAsyncSupport(AsyncSupport):
+    @classmethod
     @asynccontextmanager
-    async def launch_task_group(self):
+    async def launch_task_group(cls):
         task_group = AsyncioTaskGroup()
         try:
             yield task_group

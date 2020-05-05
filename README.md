@@ -12,10 +12,9 @@ two RPCs exposed to WAMP clients.
  
 ```python
 from aiohttp import web
-from serverwamp.adapters.aiohttp import WAMPApplication
-from serverwamp.rpc import RPCRouteSet, RPCError
+import serverwamp
 
-docs_api = RPCRouteSet()
+docs_api = serverwamp.RPCRouteSet()
 
 @docs_api.route('docs.getDocument')
 async def get_doc(document_id):
@@ -28,16 +27,17 @@ async def delete_doc(document_id):
     if succeeded:
         return {'status': 'SUCCESS'}
     else:
-        raise RPCError('wamp.error.delete_failed', kwargs={'status': 'FAILURE'})
+        return serverwamp.RPCErrorResult('wamp.error.delete_failed',
+                                         kwargs={'status': 'FAILURE'})
 
 
 if __name__ == '__main__':
-    wamp = WAMPApplication()
-    wamp.add_rpc_routes(docs_api)
+    app = serverwamp.Application()
+    app.add_rpc_routes(docs_api)
 
-    app = web.Application()
-    app.add_routes((web.get('/', wamp.handle),))
-    web.run_app(app)
+    http_app = web.Application()
+    http_app.add_routes((web.get('/', app.aiohttp_websocket_handler()),))
+    web.run_app(http_app)
 ```
 ### Type Marshalling
 RPC route handlers can supply type hints that are used to transform call
@@ -70,15 +70,14 @@ topic.
 
 ```python
 import trio
-from serverwamp.rpc import RPCRouteSet
-from serverwamp.adapters.asgi_trio import WAMPApplication
+import serverwamp
 
 async def long_running_job(session):
     await session.send_event('job_events', job_status='STARTED')
     await trio.sleep(3600)
     await session.send_event('job_events', job_status='COMPLETED')
 
-rpc_api = RPCRouteSet()
+rpc_api = serverwamp.RPCRouteSet()
 
 @rpc_api.route('doJob')
 async def do_job(self, nursery, session):
@@ -87,8 +86,8 @@ async def do_job(self, nursery, session):
 
 async def application(*args, **kwargs):
     async with trio.open_nursery() as rpc_nursery:
-        wamp = WAMPApplication()
-        wamp.set_default_rpc_arg('nursery', rpc_nursery)
+        wamp = serverwamp.Application()
+        wamp.set_default_arg('nursery', rpc_nursery)
         wamp.add_rpc_routes(rpc_api)
 
         return await wamp.asgi_application(*args, **kwargs)

@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Iterator
 
 from serverwamp.adapters.async_base import AsyncTaskGroup
 from serverwamp.protocol import (abort_msg, cra_challenge_msg,
                                  cra_challenge_string, event_msg,
-                                 generate_global_id, goodbye_msg,
-                                 subscribed_response_msg, welcome_msg)
+                                 generate_global_id, goodbye_msg, scram_nonce,
+                                 subscribed_response_msg, ticket_challenge_msg,
+                                 welcome_msg)
 
 NO_MORE_EVENTS = object()
 NO_IDENTITY = object()
@@ -34,26 +34,53 @@ class WAMPSession:
         auth_id=None,
         auth_methods=()
     ):
+        """Represents a WAMP session happening over a connection.
+        The session is available to RPC and event topic routes.
+
+        The session can be used to store information to be retrieved or changed
+        by later effects:
+
+            session['customer_id'] = 345
+
+        """
         self.connection = connection
 
         self.id = generate_global_id()
         self.auth_id = auth_id
         self.auth_methods = auth_methods
+        self.is_open = False
         self.realm = realm
-        self.user_identity = NO_IDENTITY
+        self.identity = NO_IDENTITY
+
+        self._custom_state = {}
         self._said_goodbye = False
         self._subscriptions = {}
         self._subscriptions_ids = {}
         self._tasks = tasks
         self._authenticated = False
 
-    def spawn_task(self, fn, *fn_args, **fn_kwargs):
-        self._tasks.spawn(fn, *fn_args, **fn_kwargs)
+    def __getitem__(self, key: str) -> Any:
+        return self._custom_state[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self._custom_state[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self._custom_state[key]
+
+    def __len__(self) -> int:
+        return len(self._custom_state)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._custom_state)
+
+    async def spawn_task(self, fn, *fn_args, **fn_kwargs):
+        await self._tasks.spawn(fn, *fn_args, **fn_kwargs)
 
     async def send_raw(self, msg: Iterable):
         await self.connection.send_msg(msg)
 
-    async def send_event(self, topic, args=(), kwargs=None, trustlevel=None):
+    async def send_event(self, topic, args=(), kwargs=None, trust_level=None):
         if topic not in self._subscriptions:
             return
 
@@ -62,30 +89,23 @@ class WAMPSession:
             subscription_id=subscription_id,
             publication_id=generate_global_id(),
             args=args,
-            kwargs=kwargs
+            kwargs=kwargs,
+            trust_level=trust_level
         )
         await self.connection.send_msg(msg)
 
-    async def request_ticket_authentication(
-        self,
-        auth_id: str,
-        auth_role: str,
-        auth_provider: str,
-        nonce: str,
-        auth_time: Optional[datetime] = None
-    ):
+    async def request_ticket_authentication(self):
+        await self.connection.send_msg(ticket_challenge_msg())
+
+    async def request_cra_auth(self, auth_role: str, auth_provider: str):
         challenge_string = cra_challenge_string(
             self.id,
-            auth_id=auth_id,
-            auth_provider=auth_provider,
-            auth_role=auth_role,
-            nonce=nonce,
-            auth_time=auth_time
+            auth_id=self.auth_id,
+            auth_provider=auth_role,
+            auth_role=auth_provider,
+            nonce=scram_nonce()
         )
         await self.connection.send_msg(cra_challenge_msg(challenge_string))
-
-    async def request_cra_authentication(self):
-        await self.connection.send_msg()
 
     async def register_subscription(self, topic_uri: str) -> int:
         sub_id = self.subscription_id_for_topic(topic_uri)
@@ -94,21 +114,26 @@ class WAMPSession:
         return sub_id
 
     async def unregister_subscription(self, sub_id: int):
-        if sub_id not in self._subscriptions:
-            "wamp.error.no_such_subscription"
         topic_uri = self._subscriptions_ids.pop(sub_id)
+        if not topic_uri:
+            "wamp.error.no_such_subscription"
+        del self._subscriptions[topic_uri]
 
     async def mark_subscribed(self, request, subscription_id: int):
-        await self.connection.send_msg(subscribed_response_msg(request, subscription_id))
+        await self.connection.send_msg(
+            subscribed_response_msg(request, subscription_id)
+        )
 
     @staticmethod
     def subscription_id_for_topic(topic):
         return hash(topic) & 0xFFFFFFFF
 
-    async def mark_authenticated(self):
+    async def mark_authenticated(self, identity: Any = None):
         if not self._authenticated:
             self._authenticated = True
             await self.connection.send_msg(welcome_msg(self.id))
+            self.is_open = True
+        self.identity = identity
 
     async def abort(self, uri=None, message=None):
         await self.connection.send_msg(abort_msg(uri, message))
@@ -116,8 +141,9 @@ class WAMPSession:
         await self.close()
 
     async def close(self):
-        if not self._said_goodbye:
+        if self.is_open and not self._said_goodbye:
             await self.connection.send_msg(goodbye_msg())
+        self.is_open = False
 
 
 class NoSuchSubscription(Exception):

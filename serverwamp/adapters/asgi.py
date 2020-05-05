@@ -1,14 +1,14 @@
 import re
 from abc import ABCMeta
-from io import BytesIO
 from http.cookies import CookieError, SimpleCookie
-from typing import (AsyncGenerator, Awaitable, Callable, Mapping, Union)
+from io import BytesIO
+from typing import AsyncGenerator, Awaitable, Callable, Mapping, Union
 
 import msgpack
 
 from serverwamp.connection import Connection
-from serverwamp.json import (serialize as serialize_json,
-                             deserialize as deserialize_json)
+from serverwamp.json import deserialize as deserialize_json
+from serverwamp.json import serialize as serialize_json
 
 # In order of preference.
 SUPPORTED_WS_PROTOCOLS = (
@@ -47,7 +47,7 @@ def scope_cookies(scope: Mapping):
     return {key: morsel.value for key, morsel in cookie.items()}
 
 
-def handle_asgi_path_not_found(
+async def handle_asgi_path_not_found(
     scope: Mapping,
     receive: Callable[[], Awaitable[Mapping]],
     send: Callable[[Mapping], Awaitable]
@@ -63,7 +63,7 @@ def handle_asgi_path_not_found(
     await send({'type': 'http.response.body'})
 
 
-def connection_for_asgi_invocation(
+async def connection_for_asgi_invocation(
     scope: Mapping,
     receive: Callable[[], Awaitable[Mapping]],
     send: Callable[[Mapping], Awaitable]
@@ -113,7 +113,7 @@ class ASGIWebSocketConection(Connection, metaclass=ABCMeta):
 
     async def iterate_ws_msgs(
         self,
-        type: str
+        data_type: str
     ) -> AsyncGenerator[Union[bytes, str]]:
         """Get all WebSocket messages of a certain type. Close connection
         if wrong type comes through (WAMP WebSockets don't mix types)
@@ -121,10 +121,10 @@ class ASGIWebSocketConection(Connection, metaclass=ABCMeta):
         while True:
             recvd = await self._asgi_receive()
             if recvd['type'] == 'websocket.receive':
-                if type not in recvd:
+                if data_type not in recvd:
                     await self.abort('wamp.error.protocol_error')
                     break
-                yield recvd[type]
+                yield recvd[data_type]
                 continue
             if recvd['type'] == 'websocket.disconnect':
                 break

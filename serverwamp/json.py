@@ -1,5 +1,4 @@
-"""Helper functions for dealing with WAMP JSON serialization/deserialization
-"""
+"""Helper functions for dealing with WAMP JSON serialization/deserialization"""
 import importlib.util
 import warnings
 from base64 import b64decode, b64encode

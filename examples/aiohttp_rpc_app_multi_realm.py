@@ -23,10 +23,10 @@ async def customer_auth_handler(session):
 
 if __name__ == '__main__':
     app = serverwamp.Application()
-    customers_realm = app.create_realm('customers')
+    customers_realm = serverwamp.Realm('customers')
     customers_realm.add_rpc_routes(simple_api)
 
-    admins = app.create_realm('admins')
+    admins = serverwamp.Realm('admins')
     admins.add_transport_authenticator(customer_auth_handler)
 
     web_app = web.Application()

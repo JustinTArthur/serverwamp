@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Sequence, Iterable
+from typing import Iterable, Sequence
 
 from serverwamp.protocol import abort_msg
 

@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name='serverwamp',
-    version='0.2.3',
+    version='1.0.0',
     description=('Components that add Web Application Messaging Protocol '
                  'features to WebSocket servers.'),
     long_description=open('README.md').read(),
@@ -43,6 +43,6 @@ setup(
         'serverwamp': ('py.typed',),
     },
     project_urls = {
-        "Documentation": "https://docs.example.com/HelloWorld/",
+        "Documentation": "https://serverwamp.readthedocs.io/",
     }
 )

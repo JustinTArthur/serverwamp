@@ -1,10 +1,11 @@
 import inspect
-from collections import AsyncIterator, Mapping
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, MutableMapping, Optional, Union
+from typing import (Any, AsyncIterator, Awaitable, Callable, Mapping, Optional,
+                    Pattern, Union)
 
 from serverwamp.helpers import camel_to_snake
+from serverwamp.routing import URIsRouter
 from serverwamp.session import WAMPSession
 
 POSITIONAL_PARAM_KINDS = frozenset({
@@ -24,6 +25,7 @@ class WAMPNoSuchProcedureError(Exception):
 class RPCRequest:
     """Information about the call request for RPC handlers.
     """
+    id: int
     session: WAMPSession
     uri: str
     args: Sequence
@@ -51,42 +53,7 @@ class RPCErrorResult:
     kwargs: Mapping = field(default_factory=dict)
 
 
-class RPCRouter:
-    def __init__(self, camel_snake_conversion=False):
-        self.dispatch_table: MutableMapping[str, Callable[..., Awaitable]] = {}
-        self.camel_snake_conversion = camel_snake_conversion
-        self.default_arg_factories: MutableMapping[str, Callable[[], Any]] = {}
-
-    def set_default_arg(
-        self,
-        arg_name,
-        value: Optional[Any] = None,
-        factory: Optional[Callable[[], Any]] = None,
-    ):
-        self.default_arg_factories[arg_name] = ((lambda: value)
-                                                if factory is None
-                                                else factory)
-
-    def add_route(
-        self,
-        uri: str,
-        handler,
-    ):
-        self.dispatch_table[uri] = handler
-
-    def resolve(self, uri):
-        handler = self.dispatch_table.get(uri)
-        if not handler:
-            raise WAMPNoSuchProcedureError('Procedure %s does not exist.', uri)
-        return handler
-
-    def add_routes(self, routes):
-        """Append routes to route table.
-        Parameter should be an iterable of RPCRouteDef objects.
-        """
-        for route_obj in routes:
-            route_obj.register(self)
-
+class RPCRouter(URIsRouter):
     async def handle_rpc_call(
         self,
         rpc_request: RPCRequest
@@ -144,22 +111,23 @@ class RPCRouter:
                 if is_passthrough or isinstance(value, param.annotation)
                 else param.annotation(value)
             )
-            procedure_invocation = procedure(*call_args, **call_kwargs)
-            if isinstance(procedure_invocation, AsyncIterator):
-                while True:
-                    try:
-                        return_value = await procedure_invocation.__anext__()
-                    except StopAsyncIteration:
-                        break
-                    result = _yielded_value_to_result(return_value)
-                    yield result
-                    if not isinstance(result, RPCProgressReport):
-                        # Anything other than a progress report is the final message.
-                        break
-            else:
-                return_value = await procedure_invocation
+
+        procedure_invocation = procedure(*call_args, **call_kwargs)
+        if isinstance(procedure_invocation, AsyncIterator):
+            while True:
+                try:
+                    return_value = await procedure_invocation.__anext__()
+                except StopAsyncIteration:
+                    break
                 result = _yielded_value_to_result(return_value)
                 yield result
+                if not isinstance(result, RPCProgressReport):
+                    # Anything other than a progress report is the final msg.
+                    break
+        else:
+            return_value = await procedure_invocation
+            result = _yielded_value_to_result(return_value)
+            yield result
 
 
 @dataclass(frozen=True)
@@ -168,15 +136,28 @@ class RPCRouteDef:
     handler: Callable[..., Awaitable]
     kwargs: Mapping
 
-    def __repr__(self):
-        info = []
-        for name, value in sorted(self.kwargs.items()):
-            info.append(f', {name}={value!r}')
-        return (f'<RPCRouteDef {self.uri} -> {self.handler.__name__!r}'
-                f'{"".join(info)}>')
-
     def register(self, router):
         router.add_route(self.uri, self.handler, **self.kwargs)
+
+
+@dataclass(frozen=True)
+class RPCPrefixRouteDef:
+    uri_prefix: str
+    handler: Callable[..., Awaitable]
+    kwargs: Mapping
+
+    def register(self, router):
+        router.add_prefix_route(self.uri_prefix, self.handler, **self.kwargs)
+
+
+@dataclass(frozen=True)
+class RPCRegexRouteDef:
+    uri_pattern: Union[str, Pattern]
+    handler: Callable[..., Awaitable]
+    kwargs: Mapping
+
+    def register(self, router):
+        router.add_regex_route(self.uri_pattern, self.handler, **self.kwargs)
 
 
 def route(uri, handler, **kwargs):
@@ -209,6 +190,20 @@ class RPCRouteSet(Sequence):
             return handler
         return inner
 
+    def prefix_route(self, uri_prefix, **kwargs):
+        def inner(handler):
+            self._items.append(RPCPrefixRouteDef(uri_prefix, handler, kwargs))
+            return handler
+
+        return inner
+
+    def regex_route(self, uri_pattern, **kwargs):
+        def inner(handler):
+            self._items.append(RPCRegexRouteDef(uri_pattern, handler, kwargs))
+            return handler
+
+        return inner
+
 
 RPCHandler = Callable[
     [RPCRequest],
@@ -228,8 +223,8 @@ def _yielded_value_to_result(yielded_value):
     if isinstance(yielded_value, Mapping):
         return RPCResult(kwargs=yielded_value)
     if (
-            yielded_value is None
-            or isinstance(yielded_value, SIMPLE_VALUE_TYPES)
+        yielded_value is None
+        or isinstance(yielded_value, SIMPLE_VALUE_TYPES)
     ):
         return RPCResult(args=yielded_value,)
     if isinstance(yielded_value, Sequence):

@@ -1,14 +1,13 @@
 import json
 import logging
-
+import secrets
+from base64 import b64encode
 from collections import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import IntEnum, unique
 from random import randint
 from typing import Iterable, Mapping, Optional
-
-from serverwamp.session import WAMPSession
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +54,7 @@ class WAMPHelloRequest:
     details: Mapping
 
     @classmethod
-    def from_msg_data(cls, msg_data: Sequence, session: WAMPSession):
+    def from_msg_data(cls, msg_data: Sequence):
         try:
             request = cls(realm_uri=msg_data[0], details=msg_data[1])
         except KeyError:
@@ -65,7 +64,6 @@ class WAMPHelloRequest:
 
 @dataclass(frozen=True)
 class WAMPRequest:
-    session: WAMPSession
     request_id: int
 
 
@@ -75,10 +73,9 @@ class WAMPSubscribeRequest(WAMPRequest):
     options: Mapping
 
     @classmethod
-    def from_msg_data(cls, msg_data: Sequence, session: WAMPSession):
+    def from_msg_data(cls, msg_data: Sequence):
         try:
             request = cls(
-                session=session,
                 request_id=msg_data[0],
                 options=msg_data[1],
                 topic=msg_data[2]
@@ -106,10 +103,9 @@ class WAMPUnsubscribeRequest(WAMPRequest):
     subscription: int
 
     @classmethod
-    def from_msg_data(cls, msg_data: Sequence, session: WAMPSession):
+    def from_msg_data(cls, msg_data: Sequence):
         try:
             request = cls(
-                session=session,
                 request_id=msg_data[0],
                 subscription=msg_data[1]
             )
@@ -141,7 +137,7 @@ class WAMPRPCRequest(WAMPRequest):
     kwargs: Mapping = field(default_factory=dict)
 
     @classmethod
-    def from_msg_data(cls, msg_data: Sequence, session: WAMPSession):
+    def from_msg_data(cls, msg_data: Sequence):
         try:
             request_id = msg_data[0]
             uri = msg_data[2]
@@ -160,7 +156,6 @@ class WAMPRPCRequest(WAMPRequest):
             raise WAMPMsgParseError('Poorly formed RPC call')
 
         request = cls(
-            session,
             request_id,
             uri=uri,
             options=msg_data[1],
@@ -193,13 +188,12 @@ class WAMPGoodbyeRequest(WAMPRequest):
     details: Mapping = field(default_factory=dict)
 
     @classmethod
-    def from_msg_data(cls, msg_data: Sequence, session: WAMPSession):
+    def from_msg_data(cls, msg_data: Sequence):
         try:
             request = cls(
-                session=session,
                 request_id=msg_data[0],
                 details=msg_data[1],
-                reason_uri=msg_data[2]
+                reason_uri=msg_data[2] if len(msg_data) > 2 else None
             )
         except KeyError:
             raise WAMPMsgParseError('Poorly formed goodbye')
@@ -273,6 +267,19 @@ def cra_challenge_msg(challenge_string: str) -> Iterable:
 
 def ticket_challenge_msg() -> Iterable:
     return WAMPMsgType.CHALLENGE, 'ticket', {}
+
+
+def scram_nonce() -> str:
+    """A nonce (number used once) presented as a base64-encoded sequence of
+    random octets of sufficient length to make a replay attack unfeasible.
+
+    Per WAMP specification, a length of 16 octets (128 bits) is recommended for
+    each of the client and server-generated nonces.
+
+    Can be used for both WAMP-CRA and WAMP-SCRAM authentication
+    """
+    raw_nonce = secrets.token_bytes(16)
+    return b64encode(raw_nonce).encode('ascii')
 
 
 def welcome_msg(session_id, agent_name=None) -> Iterable:
@@ -362,15 +369,14 @@ request_parser_for_msg_type = {
 
 
 def wamp_request_from_msg(
-    msg: Sequence,
-    session: Optional[WAMPSession]
+    msg: Sequence
 ) -> WAMPRequest:
-    msg_type, *msg_data = msg[0]
+    msg_type, *msg_data = msg
     try:
         parse_msg = request_parser_for_msg_type[msg_type]
     except KeyError:
         raise WAMPMsgParseError('Unsupported request')
-    request = parse_msg(msg_data, session)
+    request = parse_msg(msg_data)
     return request
 
 
