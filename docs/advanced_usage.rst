@@ -37,6 +37,60 @@ With ``allow_default_realm`` set to ``False``, clients that specify a realm
 that hasn't been configured in the application will have their connection
 aborted with a ``wamp.error.no_such_realm`` error during session establishment.
 
+
+Session Lifecycle
+-----------------
+When a connection starts speaking the WAMP protocol to serverwamp, a session
+is established between the client and server. Once the session is authenticated,
+the client may call procedures on the server and the server may publish events
+to the client. The session can be closed by the client or server or is
+implicitly closed if the underlying connection (e.g.WebSocket) is closed before
+that.
+
+Session Open and Close
+^^^^^^^^^^^^^^^^^^^^^^
+
+Custom behavior can be run when a session is opened or closed by adding session
+state handlers to the application. Session state handlers are written as
+asynchronous iterators whose first iteration is run when a session is started
+and the next when the session is closed.
+
+.. code-block:: python
+
+    async def count_session(session, app_metrics):
+        # `session` is auto-populated with the current serverwamp session
+        # `app_metrics` is a custom application-wide default argument.
+
+        # This part is called when the session is authenticated…
+        app_metrics['activeSessions'] += 1
+
+        yield
+
+        # This part is called when the session is closed…
+        app_metrics['activeSessions'] -= 1
+
+    app.set_default_arg('app_metrics', {'activeSessions': 0})
+
+Just like RPC and subscription route handlers, the session state handler can
+receive default arguments from the application realm.
+
+Session Data
+^^^^^^^^^^^^
+
+At any point in time during the session's lifecycle, custom data that is
+important to your app can be set or retrieved on the session object. The
+current session is available to RPC route handlers, topic route subscription
+handlers, and session state handlers by adding an argument named ``session`` to
+the function signature.
+
+.. code-block:: python
+
+    @rpc_api.route('set_my_name')
+    async def set_my_name(name, session):
+        # `session` is auto-populated with the current serverwamp session
+        session['name'] = name
+
+
 Asynchronous Function Support
 -----------------------------
 serverwamp uses asynchronous functions so code can run while other code is

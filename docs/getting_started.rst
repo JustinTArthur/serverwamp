@@ -50,6 +50,30 @@ The order and name of arguments in the function signature are important.
 The order is used when non-keyword arguments are supplied by the caller and the
 names are used when keyword arguments are supplied.
 
+Type Marshalling
+""""""""""""""""
+RPC route handlers can supply type hints that are used to transform call
+arguments passed in from the client.
+
+.. code-block:: python
+
+    @rpc_api.route('slowlyCountToNumber')
+    async def slowly_count(count_to: int, interval: float, taunt: str = 'ah ah ah!'):
+        for i in range(count_to):
+            print(f'{i}, {taunt}')
+            await asyncio.sleep(interval)
+
+.. code-block:: python
+
+    from decimal import Decimal
+
+    @rpc_api.route('storeHighPrecisionTimestamp')
+    async def store_timestamp(timestamp: Decimal):
+        pass
+
+Without type hints, arguments are injected as they were parsed by the
+deserializer (e.g. float for JSON Number).
+
 In addition to the arguments supplied by the caller, special pre-defined
 argument names can be used in the function signature and serverwamp will fill
 these in automatically. Out of the box, the ``request`` and ``session``
@@ -60,7 +84,8 @@ arguments are available.
     async def local_file(filename, session):
         # filename is a regular WAMP RPC call argument, session is supplied
         # by serverwamp
-        if session.connection.transport_info['peer_address'] != '127.0.0.1':
+        peer_address = session.connection.transport_info['peer_address']
+        if peer_address != '127.0.0.1':
             return RPCErrorResult(args=('Not authorized',))
 
         with open(filename, 'r') as file:
@@ -155,6 +180,10 @@ result or error.
 
 Sending Events to Clients
 -------------------------
+A big benefit to having a persistent connection like a WebSocket is that events
+can be pushed to clients without the client having to poll for new data and
+without new connections needing to be established.
+
 Given a ``Session`` object, events can be published to the client with
 ``Session.send_event()``. This could happen inside of an RPC procedure, or
 in response to external event (from a message broker for example).
@@ -263,11 +292,10 @@ a valid identity:
 Ticket Authenticator
 ^^^^^^^^^^^^^^^^^^^^
 Ticket authenticators are configured by calling
-:code:`Realm.set_ticket_authenticator` or
-:code:`Application.set_ticket_authenticator` to set the ticket authenticator
-for the default realm. It returns an identity of any type if authentication
-succeeds or nothing if authentication fails. Only one ticket authenticator is
-allowed per-realm.
+``Realm.set_ticket_authenticator`` or ``Application.set_ticket_authenticator``
+to set the ticket authenticator for the default realm. It returns an identity
+of any type if authentication succeeds or nothing if authentication fails.
+Only one ticket authenticator is allowed per-realm.
 
 .. code-block:: python
 

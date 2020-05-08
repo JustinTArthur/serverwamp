@@ -1,7 +1,8 @@
 import asyncio
-import serverwamp
 
 from aiohttp import web
+
+import serverwamp
 
 simple_api = serverwamp.RPCRouteSet()
 
@@ -34,4 +35,3 @@ if __name__ == '__main__':
         web.get('/', app.aiohttp_websocket_handler()),
     ))
     web.run_app(web_app)
-

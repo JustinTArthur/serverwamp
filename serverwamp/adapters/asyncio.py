@@ -18,6 +18,16 @@ class AsyncioAsyncSupport(AsyncSupport):
         finally:
             await task_group.close()
 
+    @classmethod
+    async def shield(
+        cls,
+        callback,
+        *callback_args,
+        **callback_kwargs
+    ):
+        coro_obj = callback(*callback_args, **callback_kwargs)
+        return await asyncio.shield(coro_obj)
+
 
 class AsyncioTaskGroup(AsyncTaskGroup):
     def __init__(self):

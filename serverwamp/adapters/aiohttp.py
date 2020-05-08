@@ -1,4 +1,3 @@
-import asyncio
 import re
 from abc import ABCMeta
 from io import BytesIO
@@ -12,8 +11,6 @@ from aiohttp import WSMsgType, web
 from serverwamp.connection import Connection
 from serverwamp.json import deserialize as deserialize_json
 from serverwamp.json import serialize as serialize_json
-
-get_event_loop = getattr(asyncio, 'get_running_loop', asyncio.get_event_loop)
 
 SUPPORTED_WS_PROTOCOLS = (
     'wamp.2.msgpack',

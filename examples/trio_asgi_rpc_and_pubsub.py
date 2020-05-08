@@ -1,4 +1,5 @@
 import trio
+
 import serverwamp
 from serverwamp.adapters.trio import TrioAsyncSupport
 
@@ -12,7 +13,7 @@ rpc_api = serverwamp.RPCRouteSet()
 
 
 @rpc_api.route('doJob')
-async def do_job(self, nursery, session):
+async def do_job(nursery, session):
     nursery.start_soon(long_running_job(session))
     return 'Job scheduled.'
 

@@ -1,7 +1,8 @@
 import asyncio
-import serverwamp
 
 from aiohttp import web
+
+import serverwamp
 
 simple_api = serverwamp.RPCRouteSet()
 
@@ -21,10 +22,8 @@ if __name__ == '__main__':
     app = serverwamp.Application()
     app.add_rpc_routes(simple_api)
 
-
     web_app = web.Application()
     web_app.add_routes((
         web.get('/', app.aiohttp_websocket_handler()),
     ))
     web.run_app(web_app)
-

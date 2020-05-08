@@ -15,6 +15,17 @@ class AnyioAsyncSupport(AsyncSupport):
             yield task_group
 
 
+    @classmethod
+    @asynccontextmanager
+    async def shield(cls,
+         callback,
+         *callback_args,
+         **callback_kwargs
+    ):
+        async with anyio.open_cancel_scope(shield=True):
+            await callback(*callback_args, **callback_kwargs)
+
+
 class AnyioTaskGroup(AsyncTaskGroup):
     """In anyio's case, this is just a light wrapper around its own TaskGroup.
     """

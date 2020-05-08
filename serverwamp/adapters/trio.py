@@ -14,6 +14,15 @@ class TrioAsyncSupport(AsyncSupport):
             task_group = TrioTaskGroup(nursery)
             yield task_group
 
+    @classmethod
+    async def shield(cls,
+         callback,
+         *callback_args,
+         **callback_kwargs
+    ):
+        with trio.CancelScope() as cancel_scope:
+            cancel_scope.shield = True
+
 
 class TrioTaskGroup(AsyncTaskGroup):
     """In Trio's case, this is just a light wrapper around Nursery."""

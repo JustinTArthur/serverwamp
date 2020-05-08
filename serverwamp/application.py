@@ -1,9 +1,11 @@
+import inspect
+from collections import defaultdict
 from dataclasses import dataclass
 from hashlib import sha256
 from hmac import HMAC
 from typing import (Any, AsyncIterator, Awaitable, Callable, Collection,
-                    Mapping, MutableMapping, MutableSequence, Optional, Type,
-                    Union)
+                    Mapping, MutableMapping, MutableSequence, MutableSet,
+                    Optional, Type, Union)
 
 from serverwamp.adapters.async_base import AsyncSupport
 from serverwamp.events import SubscriptionHandler, TopicsRouter
@@ -18,6 +20,8 @@ from serverwamp.protocol import (WAMPGoodbyeRequest, WAMPHelloRequest,
 from serverwamp.rpc import (RPCErrorResult, RPCHandler, RPCProgressReport,
                             RPCRequest, RPCRouter)
 from serverwamp.session import NoSuchSubscription, WAMPSession
+
+EMPTY_SET = frozenset()
 
 ProtocolRequestHandlerMap = Mapping[
     Type[WAMPRequest],
@@ -43,7 +47,7 @@ class CRAAuthRequirement:
 CRARequirementProvider = Callable[[WAMPSession], Awaitable[CRAAuthRequirement]]
 CRAIdentityProvider = Callable[[WAMPSession], Awaitable[Any]]
 
-SessionOpenedHandler = Callable[[WAMPSession], Awaitable[None]]
+SessionStateHandler = Callable[[WAMPSession], AsyncIterator[None]]
 
 
 class Realm:
@@ -51,17 +55,20 @@ class Realm:
         self.uri = uri
         self.authenticate_session: CoreAuthenticator = self.default_auth_handler
 
+        self.authed_session_state_handlers: MutableSequence[SessionStateHandler] = []
+        self.session_state_handlers: MutableSequence[SessionStateHandler] = []
+
         self._rpc_router = RPCRouter()
         self._topic_router = TopicsRouter()
-
         self.handle_rpc_call = self._rpc_router.handle_rpc_call
         self.handle_subscription = self._topic_router.handle_subscription
+
+        self._default_arg_factories: MutableMapping[str, Callable[[], Any]] = {}
 
         self._authenticate_ticket: Optional[TicketAuthenticator] = None
         self._transport_authenticators: MutableSequence[TransportAuthenticator] = []
         self._get_cra_requirement: Optional[CRARequirementProvider] = None
         self._identify_cra_session: Optional[CRAIdentityProvider] = None
-        self._session_opened_handlers: MutableSequence[SessionOpenedHandler] = []
 
     def set_authentication_handler(
         self,
@@ -96,8 +103,15 @@ class Realm:
     ):
         self._authenticate_ticket = authenticator
 
-    def add_session_opened_handler(self, handler: SessionOpenedHandler):
-        self._session_opened_handlers.append(handler)
+    def add_session_state_handler(
+        self,
+        handler: SessionStateHandler,
+        authenticated_only=True
+    ):
+        if authenticated_only:
+            self.authed_session_state_handlers.append(handler)
+        else:
+            self.session_state_handlers.append(handler)
 
     def set_default_arg(
         self,
@@ -107,12 +121,30 @@ class Realm:
     ) -> None:
         self._rpc_router.set_default_arg(arg_name, value, factory)
         self._topic_router.set_default_arg(arg_name, value, factory)
+        self._default_arg_factories[arg_name] = ((lambda: value)
+                                                 if factory is None
+                                                 else factory)
 
     def add_rpc_routes(self, routes):
         self._rpc_router.add_routes(routes)
 
     def add_topic_routes(self, routes):
         self._topic_router.add_routes(routes)
+
+    def args_for_realm_level_handler(self, handler, **special_params):
+        """Used internally by a serverwamp application to determine what args
+        to call a configured handler with (e.g. session state handler)
+        """
+        handler_args = []
+        for name in inspect.signature(handler).parameters.keys():
+            if name in special_params:
+                handler_args.append(special_params[name])
+                continue
+            elif name in self._default_arg_factories:
+                handler_args.append(self._default_arg_factories[name]())
+            else:
+                """TODO: Raise error to client."""
+        return handler_args
 
     async def default_auth_handler(self, session):
         for authenticate in self._transport_authenticators:
@@ -144,10 +176,6 @@ class Realm:
         await session.abort(uri='wamp.error.authentication_failed',
                             message='Authentication failed.')
 
-    async def handle_session_opened(self, session):
-        for handle_session_open in self._session_opened_handlers:
-            # These should be run concurrently eventually.
-            await handle_session_open(session)
 
 @dataclass
 class CRAResponse:
@@ -175,8 +203,8 @@ class Application:
         self._protocol_request_handlers: MutableProtocolRequestHandlerMap = {
             WAMPGoodbyeRequest: default_protocol_goodbye_handler,
             WAMPRPCRequest: default_protocol_rpc_handler,
-            WAMPSubscribeRequest: default_protocol_subscribe_handler,
-            WAMPUnsubscribeRequest: default_protocol_unsubscribe_handler
+            WAMPSubscribeRequest: self.default_protocol_subscribe_handler,
+            WAMPUnsubscribeRequest: self.default_protocol_unsubscribe_handler
         }
 
         if protocol_request_handlers:
@@ -184,18 +212,41 @@ class Application:
 
         self._synchronize_requests = synchronize_requests
 
+        self._subscription_exits: MutableMapping[
+            WAMPSession, MutableMapping[int, AsyncIterator]
+        ] = defaultdict(dict)
+        self._session_state_exits: MutableMapping[
+            WAMPSession, MutableSet[AsyncIterator]
+        ] = defaultdict(set)
+
     def add_realm(self, realm):
         self._realms[realm.uri] = realm
 
     async def handle_session(self, session: WAMPSession):
         connection = session.connection
-        realm = session.realm
+        realm: Realm = session.realm
+
+        if realm.session_state_handlers:
+            await self._start_session_state_handlers(
+                realm.session_state_handlers,
+                session
+            )
+            async with self._async_support.launch_task_group() as start_tasks:
+                for handler in realm.session_state_handlers:
+                    args = realm.args_for_realm_level_handler(handler)
+                    state_iter = handler(*args)
+                    await start_tasks.spawn(state_iter.__anext__)
+                    self._session_state_exits[session].add(state_iter)
 
         await realm.authenticate_session(session)
         if not session.is_open:
             return
 
-        await realm.handle_session_opened(session)
+        if realm.authed_session_state_handlers:
+            await self._start_session_state_handlers(
+                realm.authed_session_state_handlers,
+                session
+            )
 
         # Once the session is authenticated, order is not important to the WAMP
         # protocol itself; messages expecting responses have identifiers for
@@ -222,6 +273,15 @@ class Application:
                 return
             handler = self._protocol_request_handlers[type(request)]
             await session.spawn_task(handler, request, session)
+
+        subscription_exits = self._subscription_exits.pop(session, {})
+        for subscribe_unsubscribe_iter in subscription_exits.values():
+            try:
+                await subscribe_unsubscribe_iter.__anext__()
+            except StopAsyncIteration:
+                pass
+            else:
+                "TODO: raise exception because there should only be a single yield"
 
     async def handle_connection(self, connection):
         msgs = connection.iterate_msgs()
@@ -257,7 +317,16 @@ class Application:
                 auth_id=request.details.get('authid', None),
                 auth_methods=request.details.get('authmethods', ())
             )
-            await self.handle_session(session)
+            try:
+                await self.handle_session(session)
+            finally:
+                state_iters = self._session_state_exits.pop(session, EMPTY_SET)
+                if state_iters:
+                    async with (
+                        self._async_support.launch_task_group()
+                    ) as exit_tasks:
+                        for state_iter in state_iters:
+                            await exit_tasks.spawn(state_iter.__anext__)
 
     # Default Realm Configuration…
     def set_authentication_handler(
@@ -294,8 +363,8 @@ class Application:
     ):
         self._default_realm.set_ticket_authenticator(authenticator)
 
-    def add_session_opened_handler(self, handler: SessionOpenedHandler):
-        self._default_realm.add_session_opened_handler(handler)
+    def add_session_state_handler(self, handler: SessionStateHandler, authenticated_only=True):
+        self._default_realm.add_session_state_handler(handler, authenticated_only)
 
     def set_default_arg(
         self,
@@ -311,6 +380,55 @@ class Application:
     def add_topic_routes(self, routes):
         self._default_realm.add_topic_routes(routes)
 
+    async def _start_session_state_handlers(self, handlers, session):
+        async with self._async_support.launch_task_group() as start_tasks:
+            for handler in handlers:
+                args = session.realm.args_for_realm_level_handler(
+                    handler,
+                    session=session
+                )
+                state_iter = handler(*args)
+                await start_tasks.spawn(state_iter.__anext__)
+                self._session_state_exits[session].add(state_iter)
+
+    async def default_protocol_subscribe_handler(
+            self,
+            request: WAMPSubscribeRequest,
+            session: WAMPSession
+    ):
+        sub_id = await session.register_subscription(
+            request.topic
+        )
+        subscribe_unsubscribe_iter = session.realm.handle_subscription(request.topic, session)
+        await subscribe_unsubscribe_iter.__anext__()
+        self._subscription_exits[session][sub_id] = subscribe_unsubscribe_iter
+        await session.mark_subscribed(request, sub_id)
+
+    async def default_protocol_unsubscribe_handler(
+            self,
+            request: WAMPUnsubscribeRequest,
+            session: WAMPSession
+    ):
+        subscribe_unsubscribe_iter = self._subscription_exits[session].pop(
+            request.subscription
+        )
+        if subscribe_unsubscribe_iter:
+            try:
+                await subscribe_unsubscribe_iter.__anext__()
+            except StopAsyncIteration:
+                pass
+            else:
+                "TODO: raise exception because there should only be a single yield"
+        try:
+            await session.unregister_subscription(request.subscription)
+        except NoSuchSubscription:
+            await session.send_raw(
+                unsubscribe_error_response_msg(
+                    request,
+                    'wamp.error.no_such_subscription'
+                )
+            )
+
     # Support for various web servers/frameworks
 
     def aiohttp_websocket_handler(self):
@@ -318,7 +436,12 @@ class Application:
 
         async def handle_aiohttp_request(request):
             connection = await connection_for_aiohttp_request(request)
-            await self.handle_connection(connection)
+
+            # Have to shield as aiohttp will cancel us prior to cleanup after
+            # disconnect.
+            await self._async_support.shield(
+                self.handle_connection, connection
+            )
 
         return handle_aiohttp_request
 
@@ -445,29 +568,6 @@ async def default_protocol_rpc_handler(
         call_result_response_msg(request, result.args, result.kwargs)
     )
     return
-
-
-async def default_protocol_subscribe_handler(
-    request: WAMPSubscribeRequest,
-    session: WAMPSession
-):
-    sub_id = await session.register_subscription(request.topic)
-    await session.mark_subscribed(request, sub_id)
-
-
-async def default_protocol_unsubscribe_handler(
-    request: WAMPUnsubscribeRequest,
-    session: WAMPSession
-):
-    try:
-        await session.unregister_subscription(request.subscription)
-    except NoSuchSubscription:
-        await session.send_raw(
-            unsubscribe_error_response_msg(
-                request,
-                'wamp.error.no_such_subscription'
-            )
-        )
 
 
 async def default_protocol_goodbye_handler(
