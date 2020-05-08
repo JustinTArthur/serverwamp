@@ -200,14 +200,14 @@ subscription is torn down or the session is closed.
 
 
     @events.topic('hourly_updates')
-    async def subscribe_to_hourly_updates(topic, session):
+    async def subscribe_to_hourly_updates(topic, session, my_subscribers):
         # On subscribe…
-        self._to_update.add(session)
+        my_subscribers.add(session)
 
         yield
 
         # On unsubscribe or session close…
-        self._to_update.remove(session)
+        my_subscribers.remove(session)
 
 
     async def run_hourly_updates():
@@ -219,6 +219,7 @@ subscription is torn down or the session is closed.
             await asyncio.sleep(60.0)
 
     app.add_topics(events)
+    app.add_default_arg('my_subscribers', set())
 
     asyncio.create_task(run_hourly_updates)
 

@@ -26,7 +26,7 @@ setup(
     ),
     extras_require={
         'docs': (
-            'Sphinx==3.0.0',
+            'Sphinx==3.0.3',
         )
     },
     keywords=(
