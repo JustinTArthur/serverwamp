@@ -1,13 +1,12 @@
 import inspect
-from collections import Mapping, defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
-from typing import (Any, Awaitable, Callable, Iterable, MutableMapping,
-                    Optional, Union)
+from dataclasses import dataclass, field
+from typing import (Any, AsyncIterator, Awaitable, Callable, Mapping, Optional,
+                    Pattern, Union)
 
 from serverwamp.helpers import camel_to_snake
-from serverwamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
-                                 WAMPRPCResponse)
+from serverwamp.routing import URIsRouter
+from serverwamp.session import WAMPSession
 
 POSITIONAL_PARAM_KINDS = frozenset({
     inspect.Parameter.POSITIONAL_ONLY,
@@ -15,69 +14,51 @@ POSITIONAL_PARAM_KINDS = frozenset({
 })
 PARAM_PASSTHROUGH_TYPES = frozenset({str, inspect.Parameter.empty})
 
+SIMPLE_VALUE_TYPES = (str, bytes, bytearray, memoryview, int, float, bool)
+
 
 class WAMPNoSuchProcedureError(Exception):
     pass
 
 
-class Router:
-    def __init__(self, camel_snake_conversion=False):
-        self.dispatch_table: MutableMapping[
-            Union[str, None], MutableMapping[
-                str, Callable[..., Awaitable]
-            ]
-        ] = defaultdict(dict)
-        self.camel_snake_conversion = camel_snake_conversion
-        self.default_arg_factories: MutableMapping[
-            Union[str, None], MutableMapping[
-                str, Callable[[], Any]
-            ]
-        ] = defaultdict(dict)
+@dataclass
+class RPCRequest:
+    """Information about the call request for RPC handlers.
+    """
+    id: int
+    session: WAMPSession
+    uri: str
+    args: Sequence
+    kwargs: Mapping
+    timeout: int = 0
+    disclose_caller: bool = False
+    receive_progress: bool = False
+    partition_route: Optional[str] = None
 
-    def set_default_arg(
-        self,
-        arg_name,
-        value: Optional[Any] = None,
-        factory: Optional[Callable[[], Any]] = None,
-        realms: Optional[Iterable[str]] = None
-    ):
-        for realm in (realms or (None,)):
-            self.default_arg_factories[realm][arg_name] = ((lambda: value)
-                                                           if factory is None
-                                                           else factory)
 
-    def add_route(
-        self,
-        uri: str,
-        handler,
-        realms: Optional[Iterable[str]] = None
-    ):
-        for realm in (realms or (None,)):
-            self.dispatch_table[realm][uri] = handler
+@dataclass
+class RPCResult:
+    args: Sequence = ()
+    kwargs: Mapping = field(default_factory=dict)
 
-    def resolve(self, realm, uri):
-        handler = (
-            self.dispatch_table.get(realm, {}).get(uri)
-            or self.dispatch_table.get(None, {}).get(uri)
-        )
-        if not handler:
-            raise WAMPNoSuchProcedureError('Procedure %s does not exist.', uri)
-        return handler
 
-    def add_routes(self, routes, realms=None):
-        """Append routes to route table for the given realms.
+class RPCProgressReport(RPCResult):
+    """Used to send out intermediate progress results."""
 
-        Parameter should be an iterable of RPCRouteDef objects.
-        """
-        for route_obj in routes:
-            route_obj.register(self, realms)
 
+@dataclass
+class RPCErrorResult:
+    error_uri: str
+    args: Sequence = ()
+    kwargs: Mapping = field(default_factory=dict)
+
+
+class RPCRouter(URIsRouter):
     async def handle_rpc_call(
         self,
-        rpc_request: WAMPRPCRequest
-    ) -> Union[WAMPRPCResponse, WAMPRPCErrorResponse]:
-        realm = rpc_request.session.realm
-        procedure = self.resolve(realm, rpc_request.uri)
+        rpc_request: RPCRequest
+    ) -> AsyncIterator[RPCResult]:
+        procedure = self.resolve(rpc_request.uri)
 
         if self.camel_snake_conversion:
             request_kwargs = {
@@ -115,65 +96,38 @@ class Router:
             if not value_found:
                 if name in request_kwargs:
                     value = request_kwargs.pop(name)
-                elif name in self.default_arg_factories[realm]:
-                    value = self.default_arg_factories[realm][name]()
-                elif name in self.default_arg_factories[None]:
-                    value = self.default_arg_factories[None][name]()
+                elif name in self.default_arg_factories:
+                    value = self.default_arg_factories[name]()
                 elif param.default is not param.empty:
                     value = param.default
                 else:
-                    return WAMPRPCErrorResponse(
-                        rpc_request,
-                        uri='wamp.error.invalid_argument',
+                    yield RPCErrorResult(
+                        error_uri='wamp.error.invalid_argument',
                         kwargs={'message': f'Argument {name} required.'}
                     )
+                    return
             call_args.append(
                 value
                 if is_passthrough or isinstance(value, param.annotation)
                 else param.annotation(value)
             )
 
-        try:
-            result = await procedure(*call_args, **call_kwargs)
-        except RPCError as error:
-            return self._response_for_rpc_error(rpc_request, error)
-        if isinstance(result, (WAMPRPCResponse, WAMPRPCErrorResponse)):
-            return result
-        elif isinstance(result, Mapping):
-            return WAMPRPCResponse(rpc_request, kwargs=result)
-        elif isinstance(result, Sequence):
-            return WAMPRPCResponse(rpc_request, args=result)
-        elif result is None:
-            return WAMPRPCResponse(rpc_request, args=(None,))
+        procedure_invocation = procedure(*call_args, **call_kwargs)
+        if isinstance(procedure_invocation, AsyncIterator):
+            while True:
+                try:
+                    return_value = await procedure_invocation.__anext__()
+                except StopAsyncIteration:
+                    break
+                result = _yielded_value_to_result(return_value)
+                yield result
+                if not isinstance(result, RPCProgressReport):
+                    # Anything other than a progress report is the final msg.
+                    break
         else:
-            raise Exception("Uninterpretable response from RPC handler.")
-
-    @staticmethod
-    def _response_for_rpc_error(request, error):
-        args = error.error_arguments
-        if not args:
-            return WAMPRPCErrorResponse(request, uri=error.uri)
-        if isinstance(args, Mapping):
-            return WAMPRPCErrorResponse(
-                request,
-                uri=error.uri,
-                args=(),
-                kwargs=error.error_arguments
-            )
-        elif isinstance(args, Sequence):
-            return WAMPRPCErrorResponse(
-                request,
-                uri=error.uri,
-                args=args
-            )
-        elif isinstance(args, str):
-            return WAMPRPCErrorResponse(
-                request,
-                uri=error.uri,
-                kwargs={
-                    'message': error.error_arguments
-                }
-            )
+            return_value = await procedure_invocation
+            result = _yielded_value_to_result(return_value)
+            yield result
 
 
 @dataclass(frozen=True)
@@ -182,15 +136,28 @@ class RPCRouteDef:
     handler: Callable[..., Awaitable]
     kwargs: Mapping
 
-    def __repr__(self):
-        info = []
-        for name, value in sorted(self.kwargs.items()):
-            info.append(f', {name}={value!r}')
-        return (f'<RPCRouteDef {self.uri} -> {self.handler.__name__!r}'
-                f'{"".join(info)}>')
+    def register(self, router):
+        router.add_route(self.uri, self.handler, **self.kwargs)
 
-    def register(self, router, realms=None):
-        router.add_route(self.uri, self.handler, realms=realms, **self.kwargs)
+
+@dataclass(frozen=True)
+class RPCPrefixRouteDef:
+    uri_prefix: str
+    handler: Callable[..., Awaitable]
+    kwargs: Mapping
+
+    def register(self, router):
+        router.add_prefix_route(self.uri_prefix, self.handler, **self.kwargs)
+
+
+@dataclass(frozen=True)
+class RPCRegexRouteDef:
+    uri_pattern: Union[str, Pattern]
+    handler: Callable[..., Awaitable]
+    kwargs: Mapping
+
+    def register(self, router):
+        router.add_regex_route(self.uri_pattern, self.handler, **self.kwargs)
 
 
 def route(uri, handler, **kwargs):
@@ -223,8 +190,44 @@ class RPCRouteSet(Sequence):
             return handler
         return inner
 
+    def prefix_route(self, uri_prefix, **kwargs):
+        def inner(handler):
+            self._items.append(RPCPrefixRouteDef(uri_prefix, handler, kwargs))
+            return handler
 
-class RPCError(Exception):
-    def __init__(self, uri, error_arguments):
-        self.uri = uri
-        self.error_arguments = error_arguments
+        return inner
+
+    def regex_route(self, uri_pattern, **kwargs):
+        def inner(handler):
+            self._items.append(RPCRegexRouteDef(uri_pattern, handler, kwargs))
+            return handler
+
+        return inner
+
+
+RPCHandler = Callable[
+    [RPCRequest],
+    Union[
+        Awaitable[Union[RPCResult, RPCErrorResult]],
+        AsyncIterator[Union[RPCProgressReport, RPCResult, RPCErrorResult]]
+    ]
+]
+
+
+def _yielded_value_to_result(yielded_value):
+    """Takes a value yielded or returned by a route handler and normalizes it
+    as an RPCResult object.
+    """
+    if isinstance(yielded_value, (RPCResult, RPCErrorResult)):
+        return yielded_value
+    if isinstance(yielded_value, Mapping):
+        return RPCResult(kwargs=yielded_value)
+    if (
+        yielded_value is None
+        or isinstance(yielded_value, SIMPLE_VALUE_TYPES)
+    ):
+        return RPCResult(args=yielded_value,)
+    if isinstance(yielded_value, Sequence):
+        return RPCResult(args=yielded_value)
+    else:
+        raise Exception("Uninterpretable response from RPC handler.")

@@ -1,7 +1,7 @@
 The MIT License (MIT)
 =====================
 
-Copyright © 2019 Justin Turner Arthur
+Copyright © 2020 Justin Turner Arthur
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation

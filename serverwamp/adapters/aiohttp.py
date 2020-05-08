@@ -1,98 +1,161 @@
-import asyncio
-from asyncio import Task
-from typing import Set
+import re
+from abc import ABCMeta
+from io import BytesIO
+from ssl import SSLObject
+from typing import Optional
 
+import aiohttp
+import msgpack
 from aiohttp import WSMsgType, web
 
-from serverwamp.adapters import base
-from serverwamp.protocol import Transport, WAMPProtocol
+from serverwamp.connection import Connection
+from serverwamp.json import deserialize as deserialize_json
+from serverwamp.json import serialize as serialize_json
 
-get_event_loop = getattr(asyncio, 'get_running_loop', asyncio.get_event_loop)
+SUPPORTED_WS_PROTOCOLS = (
+    'wamp.2.msgpack',
+    'wamp.2.msgpack.batched',
+    'wamp.2.json',
+    'wamp.2.json.batched',
+)
+JSON_SPLIT_CHAR = '\x1e'
 
 
-class WSTransport(Transport):
-    """Transport for WAMPProtocol objects for sending messages across an aiohttp
-    WebSocketResponse."""
+match_jsons_in_batch = re.compile(f'(.+?)(?:{JSON_SPLIT_CHAR}|$)').finditer
+
+
+def generate_jsons_from_batch(batch: str):
+    for match in match_jsons_in_batch(batch):
+        yield match[1]
+
+
+def collect_jsons_from_batch(batch: str):
+    return batch.split(JSON_SPLIT_CHAR)
+
+
+async def connection_for_aiohttp_request(request: aiohttp.web.Request):
+    ws = web.WebSocketResponse(protocols=SUPPORTED_WS_PROTOCOLS)
+    await ws.prepare(request)
+
+    construct_connection = ws_protocol_connection_classes[ws.ws_protocol]
+    connection = construct_connection(ws, request)
+    return connection
+
+
+class AiohttpWebSocketConnection(Connection, metaclass=ABCMeta):
     def __init__(
         self,
-        request: web.Request,
-        ws_response: web.WebSocketResponse,
-        loop: asyncio.AbstractEventLoop
-    ) -> None:
-        self.closed = False
-        self._request = request
-        self._loop = loop
-        self._scheduled_tasks: Set[Task] = set()
-        self._ws = ws_response
+        ws: aiohttp.web.WebSocketResponse,
+        request: aiohttp.web.Request,
+        compress_outbound=False
+    ):
+        super().__init__()
+        self._compress_outbound = compress_outbound
+        self._ws = ws
 
-    @property
-    def remote(self):
-        return self._request.remote
-
-    @property
-    def cookies(self):
-        return self._request.cookies
-
-    def send_msg_soon(self, msg):
-        """Send a message to the WebSocket when the event loop gets a chance."""
-        if self.closed:
-            return
-        task = self._loop.create_task(self._ws.send_str(msg))
-        self._scheduled_tasks.add(task)
-        task.add_done_callback(self._scheduled_tasks.remove)
-
-    async def send_msg(self, msg):
-        """Send a message to the WebSocket immediately, and block until the
-        underlying send is complete."""
-        if self.closed:
-            return
-        await self._ws.send_str(msg)
+        self.transport_info['http_cookies'] = request.cookies
+        self.transport_info['http_path'] = request.path
+        self.transport_info['http_path_raw'] = request.raw_path
+        self.transport_info['http_query_string'] = request.query_string
+        self.transport_info['peer_address'] = request.remote
+        self.transport_info['peer_certificate'] = (
+            request.transport.get_extra_info('peercert')
+        )
+        ssl_obj: Optional[SSLObject] = (
+            request.transport.get_extra_info('ssl_object')
+        )
+        if ssl_obj:
+            self.transport_info['peer_certificate_raw'] = (
+                ssl_obj.getpeercert(binary_form=True)
+            )
 
     async def close(self):
-        if self.closed:
-            return
-        self.closed = True
-        await asyncio.gather(*self._scheduled_tasks)
         await self._ws.close()
 
 
-class WAMPApplication(base.WAMPApplication):
-    async def handle(self, request: web.Request):
-        """Route handler for aiohttp server application. Any websocket routed to
-        this handler will handled as a WAMP WebSocket
-        """
-        ws = web.WebSocketResponse(protocols=self.WS_PROTOCOLS)
-        await ws.prepare(request)
+class AiohttpJSONWebSocketConnection(AiohttpWebSocketConnection):
+    async def iterate_msgs(self):
+        async for ws_msg in self._ws:
+            if ws_msg.type == WSMsgType.TEXT:
+                yield deserialize_json(ws_msg.data)
 
-        loop = get_event_loop()
-        transport = WSTransport(request, ws, loop)
-        if self.broker:
-            wamp_protocol = WAMPProtocol(
-                transport=transport,
-                rpc_handler=self.router.handle_rpc_call,
-                subscribe_handler=self.broker.handle_subscribe,
-                unsubscribe_handler=self.broker.handle_unsubscribe,
-                **self._protocol_kwargs
-            )
-        else:
-            wamp_protocol = WAMPProtocol(
-                transport=transport,
-                rpc_handler=self.router.handle_rpc_call,
-                **self._protocol_kwargs
-            )
-        open_handler_task = loop.create_task(
-            wamp_protocol.handle_websocket_open()
+    async def send_msg(self, msg):
+        await self._ws.send_json(
+            msg,
+            compress=self._compress_outbound
         )
 
-        async for msg in ws:
-            if msg.type == WSMsgType.TEXT:
-                await wamp_protocol.handle_msg(msg.data)
-            elif msg.type == WSMsgType.ERROR:
-                print('ws connection closed with exception %s' % ws.exception())
 
-        print('websocket connection closed')
+class AiohttpBatchedJSONWebSocketConnection(AiohttpWebSocketConnection):
+    async def iterate_msgs(self):
+        async for ws_msg in self._ws:
+            if ws_msg.type == WSMsgType.TEXT:
+                for msg in generate_jsons_from_batch(ws_msg.data):
+                    yield msg
 
-        # Await any remaining background tasks.
-        await open_handler_task
+    async def send_msg(self, msg):
+        await self._ws.send_str(
+            serialize_json(msg) + JSON_SPLIT_CHAR,
+            compress=self._compress_outbound
+        )
 
-        return ws
+    async def send_msgs(self, msgs):
+        await self._ws.send_str(
+            JSON_SPLIT_CHAR.join(
+                [serialize_json(msg) for msg in msgs] + [JSON_SPLIT_CHAR]
+            ),
+            compress=self._compress_outbound
+        )
+
+
+class AiohttpMsgPackWebSocketConnection(AiohttpWebSocketConnection):
+    async def iterate_msgs(self):
+        async for ws_msg in self._ws:
+            if ws_msg.type == WSMsgType.BINARY:
+                yield msgpack.unpackb(ws_msg.data, use_list=False)
+
+    async def send_msg(self, msg):
+        msg_bytes = msgpack.packb(msg)
+        await self._ws.send_bytes(
+            msg_bytes,
+            compress=self._compress_outbound
+        )
+
+
+class AiohttpBatchedMsgPackWebSocketConnection(AiohttpWebSocketConnection):
+    async def iterate_msgs(self):
+        async for ws_msg in self._ws:
+            if not ws_msg.type == WSMsgType.BINARY:
+                continue
+
+            with BytesIO(ws_msg.data) as msg_io:
+                unpacker = msgpack.Unpacker(
+                    msg_io,
+                    use_list=False
+                )
+                for msg in unpacker:
+                    yield msg
+
+    async def send_msg(self, msg):
+        msg_bytes = msgpack.packb(msg)
+        await self._ws.send_bytes(
+            msg_bytes,
+            compress=self._compress_outbound
+        )
+
+    async def send_msgs(self, msgs):
+        batch_bytes = bytearray()
+        for msg in msgs:
+            batch_bytes += msgpack.packb(msg)
+        await self._ws.send_bytes(
+            batch_bytes,
+            compress=self._compress_outbound
+        )
+
+
+ws_protocol_connection_classes = {
+    'wamp.2.msgpack': AiohttpMsgPackWebSocketConnection,
+    'wamp.2.msgpack.batched': AiohttpBatchedMsgPackWebSocketConnection,
+    'wamp.2.json': AiohttpJSONWebSocketConnection,
+    'wamp.2.json.batched': AiohttpBatchedJSONWebSocketConnection
+}
