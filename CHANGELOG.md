@@ -1,4 +1,7 @@
 # serverwamp Changelog
+## 1.0.1
+* Fix stopasynciteration exception on session close with outstanding subscriptions.
+
 ## 1.0.0
 Brand new API with…
 * Support for multiple realms w/ separate handlers

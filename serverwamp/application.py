@@ -322,11 +322,16 @@ class Application:
             finally:
                 state_iters = self._session_state_exits.pop(session, EMPTY_SET)
                 if state_iters:
-                    async with (
-                        self._async_support.launch_task_group()
-                    ) as exit_tasks:
-                        for state_iter in state_iters:
-                            await exit_tasks.spawn(state_iter.__anext__)
+                    # TODO, make exits concurrent
+                    for state_iter in state_iters:
+                        try:
+                            await state_iter.__anext__()
+                        except StopAsyncIteration:
+                            pass
+                        else:
+                            # TODO: throw exception because there should only
+                            # be one more iteration.
+                            pass
 
     # Default Realm Configuration…
     def set_authentication_handler(
