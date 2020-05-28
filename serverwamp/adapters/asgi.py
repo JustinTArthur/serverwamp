@@ -110,6 +110,7 @@ class ASGIWebSocketConection(Connection, metaclass=ABCMeta):
         self._asgi_receive = asgi_receiver
         self._asgi_send = asgi_sender
         self.transport_info['http_cookies'] = cookies
+        self.transport_info['http_headers_raw'] = asgi_scope['headers']
 
     async def iterate_ws_msgs(
         self,

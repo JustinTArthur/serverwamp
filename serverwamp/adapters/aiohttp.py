@@ -54,6 +54,7 @@ class AiohttpWebSocketConnection(Connection, metaclass=ABCMeta):
         self._ws = ws
 
         self.transport_info['http_cookies'] = request.cookies
+        self.transport_info['http_headers_raw'] = request.raw_headers
         self.transport_info['http_path'] = request.path
         self.transport_info['http_path_raw'] = request.raw_path
         self.transport_info['http_query_string'] = request.query_string
