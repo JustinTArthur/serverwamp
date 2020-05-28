@@ -1,4 +1,7 @@
 # serverwamp Changelog
+## 1.0.2
+* Add "http_headers_raw" transport_info item for aiohttp and ASGI connections. 
+
 ## 1.0.1
 * Fix stopasynciteration exception on session close with outstanding subscriptions.
 
