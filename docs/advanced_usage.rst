@@ -13,15 +13,15 @@ client requests a realm that hasn't been explicitly configured.
     from myproject.apis import guests_realm, customers_realm, admins_realm
 
     guests_realm = serverwamp.Realm('guests')
-    guests_realm.add_routes(registration_api)
+    guests_realm.add_rpc_routes(registration_api)
 
     customers_realm = serverwamp.Realm('customers')
     customers_realm.add_transport_authenticator(customer_cookie_auth)
-    customers_realm.add_routes(account_api)
+    customers_realm.add_rpc_routes(account_api)
 
     admins_realm = serverwamp.Realm('admins')
     admins_realm.set_ticket_authenticator(admin_token_auth)
-    admins_realm.add_routes(admin_api)
+    admins_realm.add_rpc_routes(admin_api)
 
     app.add_realm(guests_realm)
     app.add_realm(customers_realm)
