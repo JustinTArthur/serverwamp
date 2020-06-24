@@ -1,4 +1,9 @@
 # serverwamp Changelog
+## 1.0.4
+* aiohttp sessions now cancellable by server shutdown
+* Session cleanup operations specifically shielded from cancellation
+* Added Application.close_sessions method (undocumented)
+
 ## 1.0.3
 * Fix for plain topic routes raising exception during registration.
 [Issue #4](JustinTArthur/serverwamp#4)

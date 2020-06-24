@@ -215,6 +215,7 @@ class Application:
 
         self._synchronize_requests = synchronize_requests
 
+        self._active_sessions: MutableSet[WAMPSession] = set()
         self._subscription_exits: MutableMapping[
             WAMPSession, MutableMapping[int, AsyncIterator]
         ] = defaultdict(dict)
@@ -226,6 +227,7 @@ class Application:
         self._realms[realm.uri] = realm
 
     async def handle_session(self, session: WAMPSession):
+        self._active_sessions.add(session)
         connection = session.connection
         realm: Realm = session.realm
 
@@ -251,40 +253,7 @@ class Application:
                 session
             )
 
-        # Once the session is authenticated, order is not important to the WAMP
-        # protocol itself; messages expecting responses have identifiers for
-        # referring back to them. Ordering may still be important to the app,
-        # however.
-        if self._synchronize_requests:
-            async for msg in connection.iterate_msgs():
-                try:
-                    request = wamp_request_from_msg(msg)
-                except WAMPMsgParseError:
-                    await connection.abort('wamp.error.protocol_error',
-                                           'Parse error.')
-                    return
-                handler = self._protocol_request_handlers[type(msg)]
-                await handler(request, session)
-            return
-
-        async for msg in connection.iterate_msgs():
-            try:
-                request = wamp_request_from_msg(msg)
-            except WAMPMsgParseError:
-                await connection.abort('wamp.error.protocol_error',
-                                       'Parse error.')
-                return
-            handler = self._protocol_request_handlers[type(request)]
-            await session.spawn_task(handler, request, session)
-
-        subscription_exits = self._subscription_exits.pop(session, {})
-        for subscribe_unsubscribe_iter in subscription_exits.values():
-            try:
-                await subscribe_unsubscribe_iter.__anext__()
-            except StopAsyncIteration:
-                pass
-            else:
-                "TODO: raise exception because there should only be a single yield"
+        await self._process_protocol_msgs(connection, session)
 
     async def handle_connection(self, connection):
         msgs = connection.iterate_msgs()
@@ -323,18 +292,79 @@ class Application:
             try:
                 await self.handle_session(session)
             finally:
-                state_iters = self._session_state_exits.pop(session, EMPTY_SET)
-                if state_iters:
-                    # TODO, make exits concurrent
-                    for state_iter in state_iters:
-                        try:
-                            await state_iter.__anext__()
-                        except StopAsyncIteration:
-                            pass
-                        else:
-                            # TODO: throw exception because there should only
-                            # be one more iteration.
-                            pass
+                await self._async_support.shield(
+                    self._clean_up_session,
+                    session
+                )
+
+    async def close_sessions(self):
+        """Cleanly close active WAMP sessions with goodbye message.
+
+        Better when clients close their own connections as it won't leave our
+        TCP sockets in the TIME-WAIT state.
+        """
+        async with self._async_support.launch_task_group() as tasks:
+            for session in self._active_sessions:
+                await tasks.spawn(session.close)
+
+    async def _process_protocol_msgs(self, connection, session):
+        # Once the session is authenticated, order is not important to the WAMP
+        # protocol itself; messages expecting responses have identifiers for
+        # referring back to them. Ordering may still be important to the app,
+        # however.
+        if self._synchronize_requests:
+            async for msg in connection.iterate_msgs():
+                try:
+                    request = wamp_request_from_msg(msg)
+                except WAMPMsgParseError:
+                    await connection.abort('wamp.error.protocol_error',
+                                           'Parse error.')
+                    return
+                handler = self._protocol_request_handlers[type(msg)]
+                await handler(request, session)
+            return
+
+        async for msg in connection.iterate_msgs():
+            try:
+                request = wamp_request_from_msg(msg)
+            except WAMPMsgParseError:
+                await connection.abort('wamp.error.protocol_error',
+                                       'Parse error.')
+                return
+            handler = self._protocol_request_handlers[type(request)]
+            await session.spawn_task(handler, request, session)
+
+    async def _clean_up_session(self, session):
+        self._active_sessions.discard(session)
+        subscription_exits = self._subscription_exits.pop(session, {})
+        for subscribe_unsubscribe_iter in subscription_exits.values():
+            try:
+                await subscribe_unsubscribe_iter.__anext__()
+            except StopAsyncIteration:
+                pass
+            else:
+                logger.error(
+                    'Subscription manager %s for session %s has more than two '
+                    'iterations or more than one yield.',
+                    subscribe_unsubscribe_iter, session.id
+                )
+
+        state_iters = self._session_state_exits.pop(session, EMPTY_SET)
+        if state_iters:
+            # TODO, make exits concurrent
+            for state_iter in state_iters:
+                try:
+                    await state_iter.__anext__()
+                except StopAsyncIteration:
+                    pass
+                else:
+                    logger.error(
+                        logger.error(
+                            'Session state manager %s for session %s has more'
+                            'than two iterations or more than one yield.',
+                            state_iter, session.id
+                        )
+                    )
 
     # Default Realm Configuration…
     def set_authentication_handler(
@@ -444,12 +474,7 @@ class Application:
 
         async def handle_aiohttp_request(request):
             connection = await connection_for_aiohttp_request(request)
-
-            # Have to shield as aiohttp will cancel us prior to cleanup after
-            # disconnect.
-            await self._async_support.shield(
-                self.handle_connection, connection
-            )
+            await self.handle_connection(connection)
 
         return handle_aiohttp_request
 
