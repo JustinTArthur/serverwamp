@@ -58,7 +58,7 @@ class TopicRouteDef:
     kwargs: Mapping
 
     def register(self, router):
-        router.add_topic(self.uri, self.handler, **self.kwargs)
+        router.add_route(self.uri, self.handler, **self.kwargs)
 
 
 @dataclass(frozen=True)
