@@ -1,4 +1,10 @@
 # serverwamp Changelog
+## 1.0.3
+* Fix for plain topic routes raising exception during registration.
+[Issue #4](JustinTArthur/serverwamp#4)
+* Exceptions in user-supplied RPC code no longer crash the app, but instead
+return a wamp.error.runtime_error to the caller like Crossbar.io's toolchain.
+
 ## 1.0.2
 * Add "http_headers_raw" transport_info item for aiohttp and ASGI connections. 
 
