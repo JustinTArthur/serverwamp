@@ -1,4 +1,5 @@
 import inspect
+import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from hashlib import sha256
@@ -22,6 +23,8 @@ from serverwamp.rpc import (RPCErrorResult, RPCHandler, RPCProgressReport,
 from serverwamp.session import NoSuchSubscription, WAMPSession
 
 EMPTY_SET = frozenset()
+
+logger = logging.getLogger(__name__)
 
 ProtocolRequestHandlerMap = Mapping[
     Type[WAMPRequest],
@@ -533,11 +536,22 @@ async def default_protocol_rpc_handler(
     )
     invocation = session.realm.handle_rpc_call(rpc_request=rpc_request)
     if isinstance(invocation, AsyncIterator):
+        yielded_anything = False
         while True:
+            # noinspection PyBroadException
             try:
                 result = await invocation.__anext__()
             except StopAsyncIteration:
                 break
+            except Exception:
+                result = RPCErrorResult('wamp.error.runtime_error')
+                logger.exception(
+                    'Exception from call handler for procedure %s',
+                    request.uri
+                )
+            else:
+                yielded_anything = True
+
             if isinstance(result, RPCProgressReport):
                 await session.send_raw(
                     call_result_response_msg(request, result.args,
@@ -559,8 +573,23 @@ async def default_protocol_rpc_handler(
                 call_result_response_msg(request, result.args, result.kwargs)
             )
             return
+        if not yielded_anything:
+            await session.send_raw(
+                call_error_response_msg(request, 'wamp.error.runtime_error')
 
-    result = await invocation
+            )
+            logger.error(
+                'Call handler for procedure %s failed to yield or return a '
+                'result.',
+                request.uri
+            )
+            return
+
+    # noinspection PyBroadException
+    try:
+        result = await invocation
+    except Exception:
+        result = RPCErrorResult('wamp.error.runtime_error')
     if isinstance(result, RPCErrorResult):
         await session.send_raw(
             call_error_response_msg(request, result.error_uri,
