@@ -6,7 +6,7 @@ from serverwamp.protocol import (abort_msg, cra_challenge_msg,
                                  cra_challenge_string, event_msg,
                                  generate_global_id, goodbye_msg, scram_nonce,
                                  subscribed_response_msg, ticket_challenge_msg,
-                                 welcome_msg)
+                                 unsubscribed_response_msg, welcome_msg)
 
 NO_MORE_EVENTS = object()
 NO_IDENTITY = object()
@@ -122,6 +122,11 @@ class WAMPSession:
     async def mark_subscribed(self, request, subscription_id: int):
         await self.connection.send_msg(
             subscribed_response_msg(request, subscription_id)
+        )
+
+    async def mark_unsubscribed(self, request):
+        await self.connection.send_msg(
+            unsubscribed_response_msg(request)
         )
 
     @staticmethod

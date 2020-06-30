@@ -456,7 +456,9 @@ class Application:
             except StopAsyncIteration:
                 pass
             else:
-                "TODO: raise exception because there should only be a single yield"
+                logger.error('Unsubscribe iterator %s had more than two '
+                             'iterations, such as from more than one yield '
+                             'statement.', subscribe_unsubscribe_iter)
         try:
             await session.unregister_subscription(request.subscription)
         except NoSuchSubscription:
@@ -466,6 +468,8 @@ class Application:
                     'wamp.error.no_such_subscription'
                 )
             )
+        else:
+            await session.mark_unsubscribed(request)
 
     # Support for various web servers/frameworks
 
