@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import IntEnum, unique
 from random import randint
-from typing import Iterable, Mapping, Optional
+from typing import Any, Iterable, Mapping, MutableMapping, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +279,7 @@ def scram_nonce() -> str:
     Can be used for both WAMP-CRA and WAMP-SCRAM authentication
     """
     raw_nonce = secrets.token_bytes(16)
-    return b64encode(raw_nonce).encode('ascii')
+    return b64encode(raw_nonce).decode('ascii')
 
 
 def welcome_msg(session_id, agent_name=None) -> Iterable:
@@ -317,7 +317,7 @@ def event_msg(
     trust_level: Optional[int] = None,
     specific_topic: Optional[str] = None
 ):
-    details = {}
+    details: MutableMapping[str, Any] = {}
     if trust_level is not None:
         details['trustlevel'] = trust_level
     if specific_topic:
