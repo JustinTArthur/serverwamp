@@ -36,7 +36,7 @@ class AsyncioTaskGroup(AsyncTaskGroup):
     async def spawn(self, callback, *callback_args, **callback_kwargs):
         coro_obj = callback(*callback_args, **callback_kwargs)
         task = _schedule_in_loop(coro_obj)
-        task.add_done_callback(self._tasks.remove)
+        task.add_done_callback(self._tasks.discard)
         self._tasks.add(task)
 
     async def cancel(self):
