@@ -1,4 +1,10 @@
 # serverwamp Changelog
+## 1.0.5
+* Fix error in SCRAM nonce generation
+* Fix lack of response to clients' unsubscribe requests
+* Fix for exception raised in trying to process protocol messages from a
+canceled connection. 
+
 ## 1.0.4
 * aiohttp sessions now cancellable by server shutdown
 * Session cleanup operations specifically shielded from cancellation
