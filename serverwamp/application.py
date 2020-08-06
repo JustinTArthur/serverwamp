@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from hashlib import sha256
-from hmac import HMAC
+from hmac import new as new_hmac
 from typing import (Any, AsyncIterator, Awaitable, Callable, Collection,
                     Mapping, MutableMapping, MutableSequence, MutableSet,
                     Optional, Type, Union)
@@ -22,6 +22,7 @@ from serverwamp.rpc import (RPCErrorResult, RPCHandler, RPCProgressReport,
                             RPCRequest, RPCRouter)
 from serverwamp.session import NoSuchSubscription, WAMPSession
 
+ALWAYS_SYNCHRONIZE = frozenset((WAMPSubscribeRequest, WAMPUnsubscribeRequest))
 EMPTY_SET = frozenset()
 
 logger = logging.getLogger(__name__)
@@ -331,8 +332,12 @@ class Application:
                 await connection.abort('wamp.error.protocol_error',
                                        'Parse error.')
                 return
-            handler = self._protocol_request_handlers[type(request)]
-            await session.spawn_task(handler, request, session)
+            request_type = type(request)
+            handler = self._protocol_request_handlers[request_type]
+            if request_type in ALWAYS_SYNCHRONIZE:
+                await handler(request, session)
+            else:
+                await session.spawn_task(handler, request, session)
 
     async def _clean_up_session(self, session):
         self._active_sessions.discard(session)
@@ -359,11 +364,9 @@ class Application:
                     pass
                 else:
                     logger.error(
-                        logger.error(
-                            'Session state manager %s for session %s has more'
-                            'than two iterations or more than one yield.',
-                            state_iter, session.id
-                        )
+                        'Session state manager %s for session %s has more '
+                        'than two iterations or more than one yield.',
+                        state_iter, session.id
                     )
 
     # Default Realm Configuration…
@@ -430,9 +433,9 @@ class Application:
                 self._session_state_exits[session].add(state_iter)
 
     async def default_protocol_subscribe_handler(
-            self,
-            request: WAMPSubscribeRequest,
-            session: WAMPSession
+        self,
+        request: WAMPSubscribeRequest,
+        session: WAMPSession
     ):
         sub_id = await session.register_subscription(
             request.topic
@@ -443,9 +446,9 @@ class Application:
         await session.mark_subscribed(request, sub_id)
 
     async def default_protocol_unsubscribe_handler(
-            self,
-            request: WAMPUnsubscribeRequest,
-            session: WAMPSession
+        self,
+        request: WAMPUnsubscribeRequest,
+        session: WAMPSession
     ):
         subscribe_unsubscribe_iter = self._subscription_exits[session].pop(
             request.subscription
@@ -538,8 +541,8 @@ class Application:
 
 
 def verify_cra_response(response: CRAResponse, secret: Union[bytes, bytearray]):
-    hmac = HMAC(key=secret, msg=response.challenge.encode('utf-8'),
-                digestmod=sha256)
+    hmac = new_hmac(key=secret, msg=response.challenge.encode('utf-8'),
+                    digestmod=sha256)
     return response.signature.encode('utf-8') == hmac.digest()
 
 

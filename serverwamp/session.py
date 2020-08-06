@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import Any, Iterable, Iterator
 
@@ -10,6 +11,8 @@ from serverwamp.protocol import (abort_msg, cra_challenge_msg,
 
 NO_MORE_EVENTS = object()
 NO_IDENTITY = object()
+
+logger = logging.getLogger(__name__)
 
 
 class AbstractAsyncQueue(ABC):
@@ -82,6 +85,8 @@ class WAMPSession:
 
     async def send_event(self, topic, args=(), kwargs=None, trust_level=None):
         if topic not in self._subscriptions:
+            logger.debug("An event for %s was not sent to %s, as session "
+                         "isn't subscribed.", topic, self.id)
             return
 
         subscription_id = self._subscriptions[topic]
@@ -116,7 +121,7 @@ class WAMPSession:
     async def unregister_subscription(self, sub_id: int):
         topic_uri = self._subscriptions_ids.pop(sub_id)
         if not topic_uri:
-            "wamp.error.no_such_subscription"
+            raise NoSuchSubscription()
         del self._subscriptions[topic_uri]
 
     async def mark_subscribed(self, request, subscription_id: int):

@@ -1,4 +1,11 @@
 # serverwamp Changelog
+## 1.0.6
+* Server now responds with error when unsubscribing from non-subscribed topic.
+* Temporarily synchronize subscribe/unsubscribe messages.
+  * Synchronization will be made configurable by request type in a future version.
+* Fix for exception raised in trying to process protocol messages from a
+canceled connection.
+
 ## 1.0.5
 * Fix error in SCRAM nonce generation
 * Fix lack of response to clients' unsubscribe requests
