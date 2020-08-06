@@ -89,22 +89,9 @@ class TopicsRouter(URIsRouter):
     ) -> AsyncIterator[None]:
         procedure = self.resolve(topic_uri)
 
-        special_params = {
-            'topic_uri': topic_uri,
-            'session': session
-        }
-
-        handler_args = []
-
-        for name in inspect.signature(procedure).parameters.keys():
-            if name in special_params:
-                handler_args.append(special_params[name])
-                continue
-            elif name in self.default_arg_factories:
-                handler_args.append(self.default_arg_factories[name]())
-            else:
-                """TODO: Raise error to client."""
-
+        handler_args = session.realm.args_for_realm_level_handler(
+            procedure, topic_uri=topic_uri, session=session
+        )
         handler_invocation = procedure(*handler_args)
         if not isinstance(handler_invocation, AsyncIterator):
             """TODO: raise error"""
