@@ -1,4 +1,7 @@
 # serverwamp Changelog
+## 1.0.7
+* Fix using deprecated collections.Sequence.
+
 ## 1.0.6
 * Server now responds with error when unsubscribing from non-subscribed topic.
 * Temporarily synchronize subscribe/unsubscribe messages.
