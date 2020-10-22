@@ -59,16 +59,17 @@ class AiohttpWebSocketConnection(Connection, metaclass=ABCMeta):
         self.transport_info['http_path_raw'] = request.raw_path
         self.transport_info['http_query_string'] = request.query_string
         self.transport_info['peer_address'] = request.remote
-        self.transport_info['peer_certificate'] = (
-            request.transport.get_extra_info('peercert')
-        )
-        ssl_obj: Optional[SSLObject] = (
-            request.transport.get_extra_info('ssl_object')
-        )
-        if ssl_obj:
-            self.transport_info['peer_certificate_raw'] = (
-                ssl_obj.getpeercert(binary_form=True)
+        if request.transport:
+            self.transport_info['peer_certificate'] = (
+                request.transport.get_extra_info('peercert')
             )
+            ssl_obj: Optional[SSLObject] = (
+                request.transport.get_extra_info('ssl_object')
+            )
+            if ssl_obj:
+                self.transport_info['peer_certificate_raw'] = (
+                    ssl_obj.getpeercert(binary_form=True)
+                )
 
     async def close(self):
         await self._ws.close()

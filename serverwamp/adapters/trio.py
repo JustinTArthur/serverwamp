@@ -15,10 +15,11 @@ class TrioAsyncSupport(AsyncSupport):
             yield task_group
 
     @classmethod
-    async def shield(cls,
-         callback,
-         *callback_args,
-         **callback_kwargs
+    async def shield(
+        cls,
+        callback,
+        *callback_args,
+        **callback_kwargs
     ):
         with trio.CancelScope() as cancel_scope:
             cancel_scope.shield = True

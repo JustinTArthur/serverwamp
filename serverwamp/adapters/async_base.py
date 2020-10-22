@@ -6,7 +6,6 @@ import typing
 from abc import ABC, abstractmethod
 from typing import Awaitable, Callable
 
-
 if hasattr(typing, 'AsyncContextManager'):
     TaskGroupManager = typing.AsyncContextManager['AsyncTaskGroup']
 else:
@@ -39,9 +38,10 @@ class AsyncSupport(ABC):
 
     @classmethod
     @abstractmethod
-    async def shield(cls,
-         callback: Callable[..., Awaitable],
-         *callback_args,
-         **callback_kwargs
+    async def shield(
+        cls,
+        callback: Callable[..., Awaitable],
+        *callback_args,
+        **callback_kwargs
     ):
         pass

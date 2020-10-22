@@ -489,10 +489,8 @@ class Application:
         self,
         paths: Optional[Collection[str]] = None
     ):
-        from serverwamp.adapters.asgi import (
-            handle_asgi_path_not_found,
-            connection_for_asgi_invocation
-        )
+        from serverwamp.adapters.asgi import (connection_for_asgi_invocation,
+                                              handle_asgi_path_not_found)
         """Returns an ASGI application callable that serves WAMP on the given
         paths. Other paths will return a 404. If paths is omitted, any path
         requested by the user agent will serve WAMP sessions.
@@ -513,10 +511,8 @@ class Application:
         self,
         paths: Optional[Collection[str]] = None
     ):
-        from serverwamp.adapters.asgi import (
-            handle_asgi_path_not_found,
-            connection_for_asgi_invocation
-        )
+        from serverwamp.adapters.asgi import (connection_for_asgi_invocation,
+                                              handle_asgi_path_not_found)
 
         def application_callable(
             scope: Mapping

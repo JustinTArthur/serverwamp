@@ -57,7 +57,7 @@ class RPCRouter(URIsRouter):
     async def handle_rpc_call(
         self,
         rpc_request: RPCRequest
-    ) -> AsyncIterator[RPCResult]:
+    ) -> AsyncIterator[Union[RPCResult, RPCErrorResult]]:
         procedure = self.resolve(rpc_request.uri)
 
         if self.camel_snake_conversion:

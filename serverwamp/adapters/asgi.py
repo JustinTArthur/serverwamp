@@ -2,7 +2,7 @@ import re
 from abc import ABCMeta
 from http.cookies import CookieError, SimpleCookie
 from io import BytesIO
-from typing import AsyncGenerator, Awaitable, Callable, Mapping, Union
+from typing import Awaitable, Callable, Mapping, Union, AsyncIterator
 
 import msgpack
 
@@ -115,7 +115,7 @@ class ASGIWebSocketConection(Connection, metaclass=ABCMeta):
     async def iterate_ws_msgs(
         self,
         data_type: str
-    ) -> AsyncGenerator[Union[bytes, str]]:
+    ) -> AsyncIterator[Union[bytes, str]]:
         """Get all WebSocket messages of a certain type. Close connection
         if wrong type comes through (WAMP WebSockets don't mix types)
         """

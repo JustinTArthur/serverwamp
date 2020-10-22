@@ -14,13 +14,13 @@ class AnyioAsyncSupport(AsyncSupport):
             task_group = AnyioTaskGroup(anyio_task_group)
             yield task_group
 
-
     @classmethod
     @asynccontextmanager
-    async def shield(cls,
-         callback,
-         *callback_args,
-         **callback_kwargs
+    async def shield(
+        cls,
+        callback,
+        *callback_args,
+        **callback_kwargs
     ):
         async with anyio.open_cancel_scope(shield=True):
             await callback(*callback_args, **callback_kwargs)

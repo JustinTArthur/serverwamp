@@ -1,12 +1,11 @@
-import inspect
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import AsyncIterator, Awaitable, Callable, Mapping, Pattern, Union
+from typing import AsyncIterator, Awaitable, Callable, Mapping, Pattern, Union, Any
 
 from serverwamp.routing import URIsRouter
 from serverwamp.session import WAMPSession
 
-SubscriptionHandler = Callable[[str, WAMPSession], AsyncIterator]
+SubscriptionHandler = Callable[[str, WAMPSession], AsyncIterator[Any]]
 
 
 class TopicRouteSet(Sequence):
