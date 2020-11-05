@@ -151,6 +151,14 @@ class Realm:
         return handler_args
 
     async def default_auth_handler(self, session):
+        if not (
+            self._transport_authenticators
+            or self._authenticate_ticket
+            or self._get_cra_requirement
+        ):
+            await session.mark_authenticated(None)
+            return
+
         for authenticate in self._transport_authenticators:
             identity = await authenticate(session)
             if identity:
