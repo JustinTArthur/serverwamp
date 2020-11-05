@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import AsyncIterator, Awaitable, Callable, Mapping, Pattern, Union, Any
+from typing import (Any, AsyncIterator, Awaitable, Callable, Mapping, Pattern,
+                    Union)
 
 from serverwamp.routing import URIsRouter
 from serverwamp.session import WAMPSession
