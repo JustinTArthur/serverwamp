@@ -1,5 +1,6 @@
 """Helper functions for dealing with WAMP JSON serialization/deserialization"""
 import importlib.util
+import re
 import warnings
 from base64 import b64decode, b64encode
 from collections.abc import ByteString
@@ -15,6 +16,9 @@ SUBCLASSABLE_LIBS = {
     'json'
 }
 JSON_PACKED_BYTES_PREFIX = '\x00'
+JSON_BATCH_SPLITTER = '\x1e'
+
+match_jsons_in_batch = re.compile(f'(.+?)(?:{JSON_BATCH_SPLITTER}|$)').finditer
 
 for module in JSON_LIBS_PREFERENCE:
     if importlib.util.find_spec(module):
@@ -63,3 +67,8 @@ elif JSON_LIBRARY == 'orjson':
         return json_bytes.decode('utf-8')
 
     deserialize = json_lib.loads
+
+
+def jsons_from_batch(batch: str):
+    for match in match_jsons_in_batch(batch):
+        yield match[1]

@@ -1,13 +1,14 @@
-import re
 from abc import ABCMeta
 from http.cookies import CookieError, SimpleCookie
-from io import BytesIO
-from typing import Awaitable, Callable, Mapping, Union, AsyncIterator
+from typing import AsyncIterator, Awaitable, Callable, Mapping, Union
 
 import msgpack
 
 from serverwamp.connection import Connection
+from serverwamp.helpers import objects_from_msgpack_batch, pack_uint32_be
+from serverwamp.json import JSON_BATCH_SPLITTER
 from serverwamp.json import deserialize as deserialize_json
+from serverwamp.json import jsons_from_batch
 from serverwamp.json import serialize as serialize_json
 
 # In order of preference.
@@ -17,20 +18,9 @@ SUPPORTED_WS_PROTOCOLS = (
     'wamp.2.json.batched',
     'wamp.2.json',
 )
-JSON_SPLIT_CHAR = '\x1e'
 
 supported_subset = frozenset(SUPPORTED_WS_PROTOCOLS).intersection
 protocol_preference = SUPPORTED_WS_PROTOCOLS.index
-match_jsons_in_batch = re.compile(f'(.+?)(?:{JSON_SPLIT_CHAR}|$)').finditer
-
-
-def generate_jsons_from_batch(batch: str):
-    for match in match_jsons_in_batch(batch):
-        yield match[1]
-
-
-def collect_jsons_from_batch(batch: str):
-    return batch.split(JSON_SPLIT_CHAR)
 
 
 def scope_cookies(scope: Mapping):
@@ -149,21 +139,21 @@ class ASGIJSONWebSocketConnection(ASGIWebSocketConection):
 class ASGIBatchedJSONWebSocketConnection(ASGIWebSocketConection):
     async def iterate_msgs(self):
         async for ws_msg in self.iterate_ws_msgs('text'):
-            for msg in generate_jsons_from_batch(ws_msg):
+            for msg in jsons_from_batch(ws_msg):
                 yield msg
 
     async def send_msg(self, msg):
         await self._asgi_send({
             'type': 'websocket.send',
-            'text': serialize_json(msg) + JSON_SPLIT_CHAR
+            'text': serialize_json(msg) + JSON_BATCH_SPLITTER
         })
 
     async def send_msgs(self, msgs):
         await self._asgi_send({
             'type': 'websocket.send',
-            'text': JSON_SPLIT_CHAR.join(
-                [serialize_json(msg) for msg in msgs] + [JSON_SPLIT_CHAR]
-            )
+            'text': JSON_BATCH_SPLITTER.join(
+                    [serialize_json(msg) for msg in msgs]
+                ) + JSON_BATCH_SPLITTER
         })
 
 
@@ -183,25 +173,24 @@ class ASGIMsgPackWebSocketConnection(ASGIWebSocketConection):
 class ASGIBatchedMsgPackWebSocketConnection(ASGIWebSocketConection):
     async def iterate_msgs(self):
         async for ws_msg in self.iterate_ws_msgs('bytes'):
-            with BytesIO(ws_msg) as msg_io:
-                unpacker = msgpack.Unpacker(
-                    msg_io,
-                    use_list=False
-                )
-                for msg in unpacker:
-                    yield msg
+            for msg in objects_from_msgpack_batch(ws_msg):
+                yield msg
 
     async def send_msg(self, msg):
         msg_bytes = msgpack.packb(msg)
+        msg_len_bytes = pack_uint32_be(len(msg_bytes))
         await self._asgi_send({
             'type': 'websocket.send',
-            'bytes': msg_bytes
+            'bytes': msg_len_bytes + msg_bytes
         })
 
     async def send_msgs(self, msgs):
         batch_bytes = bytearray()
         for msg in msgs:
-            batch_bytes += msgpack.packb(msg)
+            msg_bytes = msgpack.packb(msg)
+            msg_len_bytes = pack_uint32_be(len(msg_bytes))
+            batch_bytes += msg_len_bytes
+            batch_bytes += msg_bytes
         await self._asgi_send({
             'type': 'websocket.send',
             'bytes': batch_bytes

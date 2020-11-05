@@ -1,6 +1,4 @@
-import re
 from abc import ABCMeta
-from io import BytesIO
 from ssl import SSLObject
 from typing import Optional
 
@@ -9,7 +7,10 @@ import msgpack
 from aiohttp import WSMsgType, web
 
 from serverwamp.connection import Connection
+from serverwamp.helpers import objects_from_msgpack_batch, pack_uint32_be
+from serverwamp.json import JSON_BATCH_SPLITTER
 from serverwamp.json import deserialize as deserialize_json
+from serverwamp.json import jsons_from_batch
 from serverwamp.json import serialize as serialize_json
 
 SUPPORTED_WS_PROTOCOLS = (
@@ -18,19 +19,6 @@ SUPPORTED_WS_PROTOCOLS = (
     'wamp.2.json',
     'wamp.2.json.batched',
 )
-JSON_SPLIT_CHAR = '\x1e'
-
-
-match_jsons_in_batch = re.compile(f'(.+?)(?:{JSON_SPLIT_CHAR}|$)').finditer
-
-
-def generate_jsons_from_batch(batch: str):
-    for match in match_jsons_in_batch(batch):
-        yield match[1]
-
-
-def collect_jsons_from_batch(batch: str):
-    return batch.split(JSON_SPLIT_CHAR)
 
 
 async def connection_for_aiohttp_request(request: aiohttp.web.Request):
@@ -92,20 +80,20 @@ class AiohttpBatchedJSONWebSocketConnection(AiohttpWebSocketConnection):
     async def iterate_msgs(self):
         async for ws_msg in self._ws:
             if ws_msg.type == WSMsgType.TEXT:
-                for msg in generate_jsons_from_batch(ws_msg.data):
+                for msg in jsons_from_batch(ws_msg.data):
                     yield msg
 
     async def send_msg(self, msg):
         await self._ws.send_str(
-            serialize_json(msg) + JSON_SPLIT_CHAR,
+            serialize_json(msg) + JSON_BATCH_SPLITTER,
             compress=self._compress_outbound
         )
 
     async def send_msgs(self, msgs):
         await self._ws.send_str(
-            JSON_SPLIT_CHAR.join(
-                [serialize_json(msg) for msg in msgs] + [JSON_SPLIT_CHAR]
-            ),
+            JSON_BATCH_SPLITTER.join(
+                [serialize_json(msg) for msg in msgs]
+            ) + JSON_BATCH_SPLITTER,
             compress=self._compress_outbound
         )
 
@@ -130,25 +118,24 @@ class AiohttpBatchedMsgPackWebSocketConnection(AiohttpWebSocketConnection):
             if not ws_msg.type == WSMsgType.BINARY:
                 continue
 
-            with BytesIO(ws_msg.data) as msg_io:
-                unpacker = msgpack.Unpacker(
-                    msg_io,
-                    use_list=False
-                )
-                for msg in unpacker:
-                    yield msg
+            for msg in objects_from_msgpack_batch(ws_msg.data):
+                yield msg
 
     async def send_msg(self, msg):
         msg_bytes = msgpack.packb(msg)
+        msg_len_bytes = pack_uint32_be(len(msg_bytes))
         await self._ws.send_bytes(
-            msg_bytes,
+            msg_len_bytes + msg_bytes,
             compress=self._compress_outbound
         )
 
     async def send_msgs(self, msgs):
         batch_bytes = bytearray()
         for msg in msgs:
-            batch_bytes += msgpack.packb(msg)
+            msg_bytes = msgpack.packb(msg)
+            msg_len_bytes = pack_uint32_be(len(msg_bytes))
+            batch_bytes += msg_len_bytes
+            batch_bytes += msg_bytes
         await self._ws.send_bytes(
             batch_bytes,
             compress=self._compress_outbound
