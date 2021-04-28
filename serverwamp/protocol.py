@@ -298,11 +298,14 @@ def welcome_msg(session_id, agent_name=None) -> Iterable:
     )
 
 
-def goodbye_msg(reason_uri='wamp.close.goodbye_and_out'):
-    return WAMPMsgType.GOODBYE, {}, reason_uri
+def goodbye_msg(reason_uri='wamp.close.goodbye_and_out', message=None):
+    details = {}
+    if message:
+        details['message'] = message
+    return WAMPMsgType.GOODBYE, details, reason_uri
 
 
-def abort_msg(reason_uri, message):
+def abort_msg(reason_uri, message=None):
     details = {}
     if message:
         details['message'] = message

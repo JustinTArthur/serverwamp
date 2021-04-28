@@ -1,4 +1,7 @@
 # serverwamp Changelog
+## 1.1.0
+* Support session close goodbye message.
+
 ## 1.0.7
 * Fix using deprecated collections.Sequence.
 * WAMP-compliant msgpack batch processing

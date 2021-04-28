@@ -148,11 +148,11 @@ class WAMPSession:
     async def abort(self, uri=None, message=None):
         await self.connection.send_msg(abort_msg(uri, message))
         self._said_goodbye = True
-        await self.close()
+        await self.close(uri, message)
 
-    async def close(self):
+    async def close(self, uri=None, message=None):
         if self.is_open and not self._said_goodbye:
-            await self.connection.send_msg(goodbye_msg())
+            await self.connection.send_msg(goodbye_msg(uri, message))
         self.is_open = False
 
 
