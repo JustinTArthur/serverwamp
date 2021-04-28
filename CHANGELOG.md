@@ -1,5 +1,5 @@
 # serverwamp Changelog
-## 1.1.0
+## 1.1.1
 * Support session close goodbye message.
 
 ## 1.0.7
