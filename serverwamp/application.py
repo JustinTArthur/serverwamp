@@ -245,12 +245,6 @@ class Application:
                 realm.session_state_handlers,
                 session
             )
-            async with self._async_support.launch_task_group() as start_tasks:
-                for handler in realm.session_state_handlers:
-                    args = realm.args_for_realm_level_handler(handler)
-                    state_iter = handler(*args)
-                    await start_tasks.spawn(state_iter.__anext__)
-                    self._session_state_exits[session].add(state_iter)
 
         await realm.authenticate_session(session)
         if not session.is_open:
