@@ -1,7 +1,7 @@
 """Helper functions for dealing with WAMP JSON serialization/deserialization"""
 import importlib.util
+import logging
 import re
-import warnings
 from base64 import b64decode, b64encode
 from collections.abc import ByteString
 from typing import Any
@@ -11,12 +11,10 @@ JSON_LIBS_PREFERENCE = (
     'orjson',
     'json'
 )
-SUBCLASSABLE_LIBS = {
-    'rapidjson',
-    'json'
-}
 JSON_PACKED_BYTES_PREFIX = '\x00'
 JSON_BATCH_SPLITTER = '\x1e'
+
+logger = logging.getLogger(__name__)
 
 match_jsons_in_batch = re.compile(f'(.+?)(?:{JSON_BATCH_SPLITTER}|$)').finditer
 
@@ -29,14 +27,12 @@ else:
     raise ImportError('No suitable JSON parsing module found.')
 
 
-if JSON_LIBRARY in SUBCLASSABLE_LIBS:
-    class WAMPJSONDecoder(json_lib.Decoder):
-        def string(self, s: str):
-            if s and s[0] == JSON_PACKED_BYTES_PREFIX:
-                return b64decode(s[1:])
-            return s
+if JSON_LIBRARY == 'json':
+    logger.warning('Using standard json library for JSON serialization. '
+                   'Binary value deserialization is not possible with this '
+                   'library.')
 
-    class WAMPJSONEncoder(json_lib.Encoder):
+    class _WAMPJSONEncoder(json_lib.JSONEncoder):
         def default(self, obj: Any):
             if isinstance(obj, ByteString):
                 return (
@@ -45,12 +41,31 @@ if JSON_LIBRARY in SUBCLASSABLE_LIBS:
                 )
             raise TypeError(f'{obj} is not JSON serializable')
 
-    deserialize = WAMPJSONDecoder()
-    serialize = WAMPJSONEncoder()
+    deserialize = json_lib.loads
+    serialize = _WAMPJSONEncoder().encode
+
+elif JSON_LIBRARY == 'rapidjson':
+    class _WAMPJSONDecoder(json_lib.Decoder):
+        def string(self, s: str):
+            if s and s[0] == JSON_PACKED_BYTES_PREFIX:
+                return b64decode(s[1:])
+            return s
+
+    class _WAMPJSONEncoder(json_lib.Encoder):
+        def default(self, obj: Any):
+            if isinstance(obj, ByteString):
+                return (
+                    JSON_PACKED_BYTES_PREFIX
+                    + b64encode(obj).decode('ascii')
+                )
+            raise TypeError(f'{obj} is not JSON serializable')
+
+    deserialize = _WAMPJSONDecoder()
+    serialize = _WAMPJSONEncoder()
 
 elif JSON_LIBRARY == 'orjson':
-    warnings.warn('Found orjson library for JSON serialization. Binary value '
-                  'deserialization is not possible with this library.')
+    logger.warning('Found orjson library for JSON serialization. Binary value '
+                   'deserialization is not possible with this library.')
 
     def _obj_fallback(obj: Any) -> Any:
         if isinstance(obj, ByteString):

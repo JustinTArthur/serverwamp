@@ -1,4 +1,7 @@
 # serverwamp Changelog
+## 1.1.2
+* Fix standard library json support.
+
 ## 1.1.1
 * Support session close goodbye message.
 
