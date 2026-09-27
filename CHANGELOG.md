@@ -1,13 +1,5 @@
 # serverwamp Changelog
-## Unreleased
-* Package with pyproject.toml and the hatchling build backend.
-  * CI dependencies are now the `ci` dependency group.
-* Support Python 3.14 and 3.15.
-  * Allow msgpack 1.x releases newer than 1.0 for prebuilt wheels on newer
-    Pythons.
-  * Stop using deprecated `collections.abc.ByteString`.
-* Fix aiohttp request handler not returning its `WebSocketResponse`, which
-made aiohttp log request handling errors when the server ended a connection.
+## 1.2.0
 * Fix the default realm never being used. Sessions requesting a realm that
 wasn't added with `add_realm` now join the default realm as documented instead
 of being aborted with `wamp.error.no_such_realm`.
@@ -20,6 +12,14 @@ of being aborted with `wamp.error.no_such_realm`.
 result arguments themselves instead of as a single-element argument list.
   * Returning `None` still sends a result without arguments. Return `None,` to
     send `None` as the single argument.
+* Package with pyproject.toml and the hatchling build backend.
+  * CI dependencies are now the `ci` dependency group.
+* Support Python 3.14 and 3.15.
+  * Allow msgpack 1.x releases newer than 1.0 for prebuilt wheels on newer
+    Pythons.
+  * Stop using deprecated `collections.abc.ByteString`.
+* Fix aiohttp request handler not returning its `WebSocketResponse`, which
+made aiohttp log request handling errors when the server ended a connection.
 * Fix `wamp.2.json.batched` sessions being aborted with a protocol error, and
 batched JSON messages containing line breaks being dropped.
 * Fix ASGI `wamp.2.json` sessions failing on the first message sent to the
