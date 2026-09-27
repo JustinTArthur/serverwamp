@@ -323,7 +323,7 @@ class Application:
                     await connection.abort('wamp.error.protocol_error',
                                            'Parse error.')
                     return
-                handler = self._protocol_request_handlers[type(msg)]
+                handler = self._protocol_request_handlers[type(request)]
                 await handler(request, session)
             return
 

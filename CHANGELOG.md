@@ -24,6 +24,8 @@ result arguments themselves instead of as a single-element argument list.
 batched JSON messages containing line breaks being dropped.
 * Fix ASGI `wamp.2.json` sessions failing on the first message sent to the
 client.
+* Fix `Application(synchronize_requests=True)` failing every session on its
+first request after the welcome.
 
 ## 1.1.2
 * Fix standard library json support.
