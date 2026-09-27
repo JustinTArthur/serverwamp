@@ -20,6 +20,10 @@ of being aborted with `wamp.error.no_such_realm`.
 result arguments themselves instead of as a single-element argument list.
   * Returning `None` still sends a result without arguments. Return `None,` to
     send `None` as the single argument.
+* Fix `wamp.2.json.batched` sessions being aborted with a protocol error, and
+batched JSON messages containing line breaks being dropped.
+* Fix ASGI `wamp.2.json` sessions failing on the first message sent to the
+client.
 
 ## 1.1.2
 * Fix standard library json support.

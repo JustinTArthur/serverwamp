@@ -16,7 +16,7 @@ BYTES_TYPES = (bytes, bytearray)
 
 logger = logging.getLogger(__name__)
 
-match_jsons_in_batch = re.compile(f'(.+?)(?:{JSON_BATCH_SPLITTER}|$)').finditer
+match_jsons_in_batch = re.compile(f'[^{JSON_BATCH_SPLITTER}]+').finditer
 
 for module in JSON_LIBS_PREFERENCE:
     if importlib.util.find_spec(module):
@@ -84,6 +84,6 @@ elif JSON_LIBRARY == 'orjson':
     deserialize = json_lib.loads
 
 
-def jsons_from_batch(batch: str):
+def objects_from_json_batch(batch: str):
     for match in match_jsons_in_batch(batch):
-        yield match[1]
+        yield deserialize(match[0])

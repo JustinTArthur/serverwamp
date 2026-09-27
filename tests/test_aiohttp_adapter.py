@@ -100,13 +100,7 @@ def test_handler_returns_websocket_response_after_abort(caplog, first_msg):
 
 @pytest.mark.parametrize('ws_protocol', (
     'wamp.2.json',
-    pytest.param(
-        'wamp.2.json.batched',
-        marks=pytest.mark.xfail(
-            reason='Batched JSON messages are yielded undeserialized.',
-            strict=True
-        )
-    ),
+    'wamp.2.json.batched',
     'wamp.2.msgpack',
     'wamp.2.msgpack.batched',
 ))

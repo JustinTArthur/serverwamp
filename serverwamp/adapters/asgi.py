@@ -8,7 +8,7 @@ from serverwamp.connection import Connection
 from serverwamp.helpers import objects_from_msgpack_batch, pack_uint32_be
 from serverwamp.json import JSON_BATCH_SPLITTER
 from serverwamp.json import deserialize as deserialize_json
-from serverwamp.json import jsons_from_batch
+from serverwamp.json import objects_from_json_batch
 from serverwamp.json import serialize as serialize_json
 
 # In order of preference.
@@ -132,14 +132,14 @@ class ASGIJSONWebSocketConnection(ASGIWebSocketConection):
     async def send_msg(self, msg):
         await self._asgi_send({
             'type': 'websocket.send',
-            'text': deserialize_json(msg)
+            'text': serialize_json(msg)
         })
 
 
 class ASGIBatchedJSONWebSocketConnection(ASGIWebSocketConection):
     async def iterate_msgs(self):
         async for ws_msg in self.iterate_ws_msgs('text'):
-            for msg in jsons_from_batch(ws_msg):
+            for msg in objects_from_json_batch(ws_msg):
                 yield msg
 
     async def send_msg(self, msg):

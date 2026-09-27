@@ -34,4 +34,5 @@ def run(coro):
     try:
         return loop.run_until_complete(coro)
     finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
         loop.close()
