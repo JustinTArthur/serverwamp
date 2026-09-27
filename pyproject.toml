@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "serverwamp"
+version = "1.1.2"
+description = "Components that add Web Application Messaging Protocol features to WebSocket servers."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.6"
+authors = [
+    { name = "Justin Turner Arthur", email = "justinarthur@gmail.com" },
+]
+keywords = [
+    "WAMP", "WebSockets", "aiohttp", "RPC", "pubsub", "broker", "dealer",
+    "ASGI",
+]
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet",
+    "Framework :: AsyncIO",
+    "Framework :: Trio",
+]
+dependencies = [
+    "dataclasses~=0.6;python_version<'3.7'",
+    "msgpack~=1.0.0",
+]
+
+[project.optional-dependencies]
+docs = [
+    "Sphinx==3.0.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/JustinTArthur/serverwamp"
+Documentation = "https://serverwamp.readthedocs.io/"
+
+[dependency-groups]
+ci = [
+    "aiohttp>=3.0.0",
+    "mypy==0.770",
+    "pytest==5.4.1",
+    "trio>=0.12.0",
+    "trio-typing~=0.2.0",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/serverwamp",
+    "/CHANGELOG.md",
+    "/LICENSE.md",
+    "/README.md",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["serverwamp"]

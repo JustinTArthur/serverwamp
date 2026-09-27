@@ -1,4 +1,8 @@
 # serverwamp Changelog
+## Unreleased
+* Package with pyproject.toml and the hatchling build backend.
+  * CI dependencies are now the `ci` dependency group.
+
 ## 1.1.2
 * Fix standard library json support.
 

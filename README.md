@@ -76,5 +76,5 @@ if __name__ == '__main__':
 ## Development
 Unit tests can be run with:
 
-    pip install -e .
+    pip install -e . --group ci
     pytest

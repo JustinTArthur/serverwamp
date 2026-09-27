@@ -1,6 +1,0 @@
-aiohttp>=3.0.0
-mypy==0.770
-pytest==5.4.1
-trio>=0.12.0
-trio-typing~=0.2.0
--e .
