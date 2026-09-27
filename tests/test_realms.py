@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 import serverwamp
 from serverwamp.connection import Connection
 from serverwamp.protocol import WAMPMsgType
@@ -105,3 +107,25 @@ def test_unconfigured_realm_aborted_without_default_realm():
 def test_configured_realm_works_without_default_realm():
     app = build_app(allow_default_realm=False)
     assert run(call_which_realm(app, 'explicit.realm')) == ('explicit',)
+
+
+async def _noop(*args, **kwargs):
+    pass
+
+
+@pytest.mark.parametrize('method_name, args', (
+    ('set_authentication_handler', (_noop,)),
+    ('set_rpc_handler', (_noop,)),
+    ('set_subscription_handler', (_noop,)),
+    ('add_transport_authenticator', (_noop,)),
+    ('set_cra_handlers', (_noop, _noop)),
+    ('set_ticket_authenticator', (_noop,)),
+    ('add_session_state_handler', (_noop,)),
+    ('set_default_arg', ('arg_name', 'value')),
+    ('add_rpc_routes', (serverwamp.RPCRouteSet(),)),
+    ('add_topic_routes', (serverwamp.TopicRouteSet(),)),
+))
+def test_default_realm_config_without_default_realm(method_name, args):
+    app = serverwamp.Application(allow_default_realm=False)
+    with pytest.raises(RuntimeError, match='allow_default_realm=False'):
+        getattr(app, method_name)(*args)

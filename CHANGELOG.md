@@ -13,6 +13,9 @@ wasn't added with `add_realm` now join the default realm as documented instead
 of being aborted with `wamp.error.no_such_realm`.
   * Applications that only use explicitly added realms and want other realms
     rejected should use `Application(allow_default_realm=False)`.
+* Application-level realm configuration methods (e.g. `add_rpc_routes`) raise a
+`RuntimeError` explaining that the default realm is disabled when
+`allow_default_realm=False`, instead of an `AttributeError`.
 
 ## 1.1.2
 * Fix standard library json support.

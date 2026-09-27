@@ -372,30 +372,40 @@ class Application:
                     )
 
     # Default Realm Configuration…
+    @property
+    def _enabled_default_realm(self) -> Realm:
+        if self._default_realm is None:
+            raise RuntimeError(
+                'The default realm is disabled by allow_default_realm=False. '
+                'Configure a Realm and add it with Application.add_realm() '
+                'instead.'
+            )
+        return self._default_realm
+
     def set_authentication_handler(
         self,
         handler: Callable[[WAMPSession], Awaitable[Any]]
     ):
-        self._default_realm.set_authentication_handler(handler)
+        self._enabled_default_realm.set_authentication_handler(handler)
 
     def set_rpc_handler(self, handler: RPCHandler):
-        self._default_realm.set_rpc_handler(handler)
+        self._enabled_default_realm.set_rpc_handler(handler)
 
     def set_subscription_handler(self, handler: SubscriptionHandler):
-        self._default_realm.set_subscription_handler(handler)
+        self._enabled_default_realm.set_subscription_handler(handler)
 
     def add_transport_authenticator(
         self,
         authenticator: TransportAuthenticator
     ):
-        self._default_realm.add_transport_authenticator(authenticator)
+        self._enabled_default_realm.add_transport_authenticator(authenticator)
 
     def set_cra_handlers(
         self,
         requirement_provider: CRARequirementProvider,
         identity_provider: CRAIdentityProvider
     ):
-        self._default_realm.set_cra_handlers(
+        self._enabled_default_realm.set_cra_handlers(
             requirement_provider,
             identity_provider
         )
@@ -404,10 +414,10 @@ class Application:
         self,
         authenticator: TicketAuthenticator
     ):
-        self._default_realm.set_ticket_authenticator(authenticator)
+        self._enabled_default_realm.set_ticket_authenticator(authenticator)
 
     def add_session_state_handler(self, handler: SessionStateHandler, authenticated_only=True):
-        self._default_realm.add_session_state_handler(handler, authenticated_only)
+        self._enabled_default_realm.add_session_state_handler(handler, authenticated_only)
 
     def set_default_arg(
         self,
@@ -415,13 +425,13 @@ class Application:
         value: Optional[Any] = None,
         factory: Optional[Callable] = None
     ) -> None:
-        self._default_realm.set_default_arg(arg_name, value, factory)
+        self._enabled_default_realm.set_default_arg(arg_name, value, factory)
 
     def add_rpc_routes(self, routes):
-        self._default_realm.add_rpc_routes(routes)
+        self._enabled_default_realm.add_rpc_routes(routes)
 
     def add_topic_routes(self, routes):
-        self._default_realm.add_topic_routes(routes)
+        self._enabled_default_realm.add_topic_routes(routes)
 
     async def _start_session_state_handlers(self, handlers, session):
         async with self._async_support.launch_task_group() as start_tasks:
