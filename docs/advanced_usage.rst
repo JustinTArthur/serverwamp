@@ -10,7 +10,8 @@ client requests a realm that hasn't been explicitly configured.
 
 .. code-block:: python
 
-    from myproject.apis import guests_realm, customers_realm, admins_realm
+    from myproject.apis import account_api, admin_api, registration_api
+    from myproject.auth import admin_token_auth, customer_cookie_auth
 
     guests_realm = serverwamp.Realm('guests')
     guests_realm.add_rpc_routes(registration_api)
@@ -20,12 +21,12 @@ client requests a realm that hasn't been explicitly configured.
     customers_realm.add_rpc_routes(account_api)
 
     admins_realm = serverwamp.Realm('admins')
-    admins_realm.set_ticket_authenticator(admin_token_auth)
+    admins_realm.add_transport_authenticator(admin_token_auth)
     admins_realm.add_rpc_routes(admin_api)
 
     app.add_realm(guests_realm)
     app.add_realm(customers_realm)
-    app.add_realm(admin_realm)
+    app.add_realm(admins_realm)
 
 The default realm can be disabled during application setup:
 
@@ -120,7 +121,7 @@ A few asynchronous support libraries are provided out of the box:
 • ``serverwamp.adapters.anyio.AnyioAsyncSupport`` for
   :doc:`AnyIO <anyio:index>`
 • ``serverwamp.adapters.asyncio.AsyncioAsyncSupport`` for
-  :doc:`asyncio <library/asyncio>` (the default)
+  :doc:`asyncio <python:library/asyncio>` (the default)
 • ``serverwamp.adapters.trio.TrioAsyncSupport`` for
   :doc:`Trio <trio:index>`
 
@@ -157,16 +158,17 @@ supplied to handle procedure calls however you want. Routes registered with
 this case.
 
 A basic RPC handler either returns an :py:meth:`~serverwamp.rpc.RPCResult` or
-an :py:meth:`~serverwamp.rpc.RPCError`.
+an :py:meth:`~serverwamp.rpc.RPCErrorResult`.
 
 .. code-block:: python
 
     from serverwamp.rpc import RPCRequest, RPCResult, RPCErrorResult
 
-    async def rpc_handler(rpc_request: RPCRequest) -> Any:
+    async def rpc_handler(rpc_request: RPCRequest):
         if rpc_request.uri == 'add_stuff':
             if not all(isinstance(arg, (int, float)) for arg in rpc_request.args):
-                return RPCErrorResult(args=('Numbers only!',))
+                return RPCErrorResult('wamp.error.invalid_argument',
+                                      args=('Numbers only!',))
             total = sum(rpc_request.args)
             return RPCResult(args=(total,))
         else:
@@ -177,7 +179,8 @@ an :py:meth:`~serverwamp.rpc.RPCError`.
 Progressive results are also supported by supplying a handler that returns
 and async iterator that produces any number of
 :py:meth:`~serverwamp.rpc.RPCProgressReport`\ s and a final
-:py:meth:`~serverwamp.rpc.RPCResult` or an :py:meth:`~serverwamp.rpc.RPCError`.
+:py:meth:`~serverwamp.rpc.RPCResult` or an
+:py:meth:`~serverwamp.rpc.RPCErrorResult`.
 
 An async generator is the easiest way to do this:
 
@@ -186,14 +189,15 @@ An async generator is the easiest way to do this:
     from serverwamp.rpc import (RPCProgressReport, RPCRequest, RPCResult,
                                 RPCErrorResult)
 
-    async def rpc_handler(rpc_request: RPCRequest) -> Any:
+    async def rpc_handler(rpc_request: RPCRequest):
         if rpc_request.uri != 'add_stuff':
             yield RPCErrorResult('myapp.custom_error')
 
         total = 0
         for num in rpc_request.args:
             if not isinstance(num, (float,int)):
-                yield RPCErrorResult(args=('Numbers only!',))
+                yield RPCErrorResult('wamp.error.invalid_argument',
+                                     args=('Numbers only!',))
                 return
             total += num
             yield RPCProgressReport(args=(f'Added {num}',))

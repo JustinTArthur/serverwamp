@@ -86,7 +86,7 @@ arguments are available.
         # by serverwamp
         peer_address = session.connection.transport_info['peer_address']
         if peer_address != '127.0.0.1':
-            return RPCErrorResult(args=('Not authorized',))
+            return RPCErrorResult('wamp.error.not_authorized')
 
         with open(filename, 'r') as file:
             return file.read()
@@ -158,14 +158,15 @@ by constructing an ``RPCResult``.
 Error responses:
 """"""""""""""""
 You can respond to the caller to let them know an error has occurred by
-returning an ``RPCErrorResult``. Just like regular results, errors can have
-arguments.
+returning an ``RPCErrorResult`` with a WAMP error URI. Just like regular
+results, errors can have arguments.
 
 .. code-block:: python
 
     return serverwamp.RPCErrorResult(
+        'wamp.error.invalid_argument',
         kwargs={
-            'errorCode': 'BAD_INPUT'
+            'errorCode': 'BAD_INPUT',
             'errorMessage': 'You should have supplied a number instead of a string.'
         }
     )
@@ -266,11 +267,9 @@ Authentication
 Authentication can be required for new sessions. To require authentication,
 supply one or more authenticator functions.
 
-A realm can have any number of transport authenticators, but only one
-challenge-based authenticator like ticket or CRA. If no transport authenticator
-has marked the session as authenticated, then severwamp will proceed with any
-supplied challenge-based authenticator. If no authenticators return
-an identity, the session will be aborted as having failed authentication.
+A realm can have any number of transport authenticators. If none of them
+returns an identity, the session will be aborted as having failed
+authentication.
 
 
 Transport Authenticator
@@ -285,7 +284,7 @@ Transport authenticators are configured by calling
 
 .. code-block:: python
 
-    async def transport_authenticator(session) -> Any:
+    async def transport_authenticator(session):
         cookies = session.connection.transport_info['http_cookies']
         if cookies['myName'] == 'Jeff':
             identity = {'name': 'Jeff'}
@@ -305,49 +304,11 @@ a valid identity:
 • ``session.connection.transport_info['peer_address']`` String of IP address or
   Unix path of the WAMP peer.
 
-Ticket Authenticator
-^^^^^^^^^^^^^^^^^^^^
-Ticket authenticators are configured by calling
-``Realm.set_ticket_authenticator`` or ``Application.set_ticket_authenticator``
-to set the ticket authenticator for the default realm. It returns an identity
-of any type if authentication succeeds or nothing if authentication fails.
-Only one ticket authenticator is allowed per-realm.
-
-.. code-block:: python
-
-    async def ticket_authenticator(session, ticket) -> Any:
-        if ticket in auth_db:
-            return identity
-
-    app.set_ticket_authenticator(ticket_authenticator)
-
-Challenge-Response Authenticator
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-In order to make CRA challenges, two callables are required, a requirement
-provider and an identity provider. If the peer successfully proves they have
-the same secret from the requirement provider, the session's identity will be
-retrieved from the identity provider. Only one set of CRA handlers are allowed
-per realm.
-
-.. code-block:: python
-
-    import serverwamp
-
-    async def cra_requirement_provider(session) -> Any:
-        secret = await my_company_auth_db.retrieve_secret(session.auth_id)
-        req = serverwamp.CRAAuthRequirement(
-            auth_role='RegularUser',
-            auth_provider='my_company_auth_db'
-            secret=secret
-        )
-        return req
-
-    async def cra_identity_provider(session):
-        """Called only when CRA auth is successful."""
-        user = await my_company_users_db.retrieve_user(session.auth_id)
-        return user
-
-    app.set_cra_handlers(cra_requirement_provider, cra_identity_provider)
+Ticket and Challenge-Response Authentication
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+serverwamp doesn't support WAMP ticket or challenge-response (WAMP-CRA)
+authentication yet. ``set_ticket_authenticator`` and ``set_cra_handlers`` aren't
+functional, so use transport authenticators instead.
 
 
 Custom Authentication

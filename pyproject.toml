@@ -43,7 +43,7 @@ dependencies = [
 
 [project.optional-dependencies]
 docs = [
-    "Sphinx==3.0.3",
+    "Sphinx>=9.1,<10",
 ]
 
 [project.urls]
