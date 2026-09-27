@@ -484,6 +484,7 @@ class Application:
         async def handle_aiohttp_request(request):
             connection = await connection_for_aiohttp_request(request)
             await self.handle_connection(connection)
+            return connection.ws_response
 
         return handle_aiohttp_request
 

@@ -6,6 +6,8 @@
   * Allow msgpack 1.x releases newer than 1.0 for prebuilt wheels on newer
     Pythons.
   * Stop using deprecated `collections.abc.ByteString`.
+* Fix aiohttp request handler not returning its `WebSocketResponse`, which
+made aiohttp log request handling errors when the server ended a connection.
 
 ## 1.1.2
 * Fix standard library json support.

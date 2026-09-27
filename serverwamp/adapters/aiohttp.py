@@ -59,6 +59,11 @@ class AiohttpWebSocketConnection(Connection, metaclass=ABCMeta):
                     ssl_obj.getpeercert(binary_form=True)
                 )
 
+    @property
+    def ws_response(self) -> aiohttp.web.WebSocketResponse:
+        """The aiohttp response the request handler must return."""
+        return self._ws
+
     async def close(self):
         await self._ws.close()
 
