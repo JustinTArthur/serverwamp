@@ -222,11 +222,10 @@ def _yielded_value_to_result(yielded_value):
         return yielded_value
     if isinstance(yielded_value, Mapping):
         return RPCResult(kwargs=yielded_value)
-    if (
-        yielded_value is None
-        or isinstance(yielded_value, SIMPLE_VALUE_TYPES)
-    ):
-        return RPCResult(args=yielded_value,)
+    if yielded_value is None:
+        return RPCResult()
+    if isinstance(yielded_value, SIMPLE_VALUE_TYPES):
+        return RPCResult(args=(yielded_value,))
     if isinstance(yielded_value, Sequence):
         return RPCResult(args=yielded_value)
     else:

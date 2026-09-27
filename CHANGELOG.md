@@ -16,6 +16,10 @@ of being aborted with `wamp.error.no_such_realm`.
 * Application-level realm configuration methods (e.g. `add_rpc_routes`) raise a
 `RuntimeError` explaining that the default realm is disabled when
 `allow_default_realm=False`, instead of an `AttributeError`.
+* Fix single RPC return values (e.g. `return 'hello'`) being sent as the
+result arguments themselves instead of as a single-element argument list.
+  * Returning `None` still sends a result without arguments. Return `None,` to
+    send `None` as the single argument.
 
 ## 1.1.2
 * Fix standard library json support.

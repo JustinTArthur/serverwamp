@@ -104,6 +104,21 @@ Single return argument:
 Any serializable non-mapping, non-list, and non-tuple can be returned and it
 will be used as the single return argument to the caller.
 
+No return arguments:
+""""""""""""""""""""
+
+.. code-block:: python
+
+    return None
+
+Returning ``None``, or not returning a value at all, sends the caller a result
+without arguments. To send ``None`` as the single return argument instead
+(``[null]`` in JSON), return it in a tuple:
+
+.. code-block:: python
+
+    return None,
+
 Positional return arguments:
 """"""""""""""""""""""""""""
 

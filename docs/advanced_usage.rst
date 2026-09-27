@@ -164,7 +164,7 @@ an :py:meth:`~serverwamp.rpc.RPCError`.
     from serverwamp.rpc import RPCRequest, RPCResult, RPCErrorResult
 
     async def rpc_handler(rpc_request: RPCRequest) -> Any:
-        if rpc_request.uri = 'add_stuff':
+        if rpc_request.uri == 'add_stuff':
             if not all(isinstance(arg, (int, float)) for arg in rpc_request.args):
                 return RPCErrorResult(args=('Numbers only!',))
             total = sum(rpc_request.args)
@@ -196,7 +196,7 @@ An async generator is the easiest way to do this:
                 yield RPCErrorResult(args=('Numbers only!',))
                 return
             total += num
-            yield RPCProgressReport(args=(f'Added {num}'))
+            yield RPCProgressReport(args=(f'Added {num}',))
 
         yield RPCResult(args=(total,))
 
