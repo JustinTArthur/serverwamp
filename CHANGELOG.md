@@ -28,6 +28,8 @@ client.
 first request after the welcome.
 * Fix messages batched in the same WebSocket message as a client's HELLO being
 dropped.
+* Declare the `serverwamp` package's public names in `__all__` so strict type
+checkers accept `serverwamp.Application` and the other top-level names.
 
 ## 1.1.2
 * Fix standard library json support.
