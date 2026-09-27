@@ -36,6 +36,8 @@ The default realm can be disabled during application setup:
 With ``allow_default_realm`` set to ``False``, clients that specify a realm
 that hasn't been configured in the application will have their connection
 aborted with a ``wamp.error.no_such_realm`` error during session establishment.
+Applications that only serve explicitly added realms should disable the
+default realm so that clients requesting any other realm are rejected.
 
 
 Session Lifecycle

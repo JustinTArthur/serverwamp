@@ -8,6 +8,11 @@
   * Stop using deprecated `collections.abc.ByteString`.
 * Fix aiohttp request handler not returning its `WebSocketResponse`, which
 made aiohttp log request handling errors when the server ended a connection.
+* Fix the default realm never being used. Sessions requesting a realm that
+wasn't added with `add_realm` now join the default realm as documented instead
+of being aborted with `wamp.error.no_such_realm`.
+  * Applications that only use explicitly added realms and want other realms
+    rejected should use `Application(allow_default_realm=False)`.
 
 ## 1.1.2
 * Fix standard library json support.

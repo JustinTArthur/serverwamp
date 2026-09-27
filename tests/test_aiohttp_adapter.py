@@ -33,7 +33,7 @@ def build_web_app(handler_results):
 
     realm = serverwamp.Realm(REALM_URI)
     realm.add_rpc_routes(rpc_routes)
-    wamp_app = serverwamp.Application()
+    wamp_app = serverwamp.Application(allow_default_realm=False)
     wamp_app.add_realm(realm)
     wamp_handler = wamp_app.aiohttp_websocket_handler()
 

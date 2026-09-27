@@ -279,10 +279,10 @@ class Application:
                                    'Unexpected request.')
             return
 
-        if request.realm_uri not in self._realms:
+        realm = self._realms.get(request.realm_uri, self._default_realm)
+        if realm is None:
             await connection.abort('wamp.error.no_such_realm')
             return
-        realm = self._realms[request.realm_uri]
 
         async with self._async_support.launch_task_group() as session_tasks:
             session = WAMPSession(
