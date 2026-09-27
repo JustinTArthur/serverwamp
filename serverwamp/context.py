@@ -59,8 +59,6 @@ if hasattr(contextlib, 'asynccontextmanager'):
     asynccontextmanager = contextlib.asynccontextmanager
 else:
     def asynccontextmanager(func):
-        print('bad one')
-
         @wraps(func)
         def helper(*args, **kwds):
             return _AsyncGeneratorContextManager(func, args, kwds)
