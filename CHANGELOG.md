@@ -26,6 +26,8 @@ batched JSON messages containing line breaks being dropped.
 client.
 * Fix `Application(synchronize_requests=True)` failing every session on its
 first request after the welcome.
+* Fix messages batched in the same WebSocket message as a client's HELLO being
+dropped.
 
 ## 1.1.2
 * Fix standard library json support.

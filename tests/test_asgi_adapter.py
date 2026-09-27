@@ -168,3 +168,27 @@ def test_batched_messages_in_one_websocket_message(ws_protocol):
         await client.disconnect()
 
     run(exercise())
+
+
+@pytest.mark.parametrize('ws_protocol', (
+    'wamp.2.json.batched',
+    'wamp.2.msgpack.batched',
+))
+def test_messages_batched_with_hello(ws_protocol):
+    async def exercise():
+        client = ASGIClient(ws_protocol)
+        await client.start(build_asgi_app())
+
+        client.send(
+            [WAMPMsgType.HELLO, REALM_URI, {}],
+            [WAMPMsgType.CALL, 1, {}, 'echo', ['batched with hello']],
+        )
+        welcome = await client.receive()
+        assert welcome[0] == WAMPMsgType.WELCOME
+        assert await client.receive() == [
+            WAMPMsgType.CALL_RESULT, 1, {}, ['batched with hello']
+        ]
+
+        await client.disconnect()
+
+    run(exercise())

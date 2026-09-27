@@ -235,7 +235,11 @@ class Application:
     def add_realm(self, realm):
         self._realms[realm.uri] = realm
 
-    async def handle_session(self, session: WAMPSession):
+    async def handle_session(
+        self,
+        session: WAMPSession,
+        msgs: Optional[AsyncIterator] = None
+    ):
         self._active_sessions.add(session)
         connection = session.connection
         realm: Realm = session.realm
@@ -256,11 +260,22 @@ class Application:
                 session
             )
 
-        await self._process_protocol_msgs(connection, session)
+        if msgs is None:
+            msgs = connection.iterate_msgs()
+        await self._process_protocol_msgs(msgs, connection, session)
 
     async def handle_connection(self, connection):
+        # A single iterator serves the whole connection so that messages the
+        # transport already received, like the rest of a batch, aren't lost.
         msgs = connection.iterate_msgs()
+        try:
+            await self._handle_connection_msgs(connection, msgs)
+        finally:
+            aclose = getattr(msgs, 'aclose', None)
+            if aclose:
+                await aclose()
 
+    async def _handle_connection_msgs(self, connection, msgs):
         # They say hello or we show them the door.  TODO: timeout?
         async for msg in msgs:
             try:
@@ -293,7 +308,7 @@ class Application:
                 auth_methods=request.details.get('authmethods', ())
             )
             try:
-                await self.handle_session(session)
+                await self.handle_session(session, msgs)
             finally:
                 await self._async_support.shield(
                     self._clean_up_session,
@@ -310,13 +325,13 @@ class Application:
             for session in self._active_sessions:
                 await tasks.spawn(session.close)
 
-    async def _process_protocol_msgs(self, connection, session):
+    async def _process_protocol_msgs(self, msgs, connection, session):
         # Once the session is authenticated, order is not important to the WAMP
         # protocol itself; messages expecting responses have identifiers for
         # referring back to them. Ordering may still be important to the app,
         # however.
         if self._synchronize_requests:
-            async for msg in connection.iterate_msgs():
+            async for msg in msgs:
                 try:
                     request = wamp_request_from_msg(msg)
                 except WAMPMsgParseError:
@@ -327,7 +342,7 @@ class Application:
                 await handler(request, session)
             return
 
-        async for msg in connection.iterate_msgs():
+        async for msg in msgs:
             try:
                 request = wamp_request_from_msg(msg)
             except WAMPMsgParseError:
