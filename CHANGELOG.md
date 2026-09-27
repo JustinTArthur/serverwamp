@@ -2,6 +2,10 @@
 ## Unreleased
 * Package with pyproject.toml and the hatchling build backend.
   * CI dependencies are now the `ci` dependency group.
+* Support Python 3.14 and 3.15.
+  * Allow msgpack 1.x releases newer than 1.0 for prebuilt wheels on newer
+    Pythons.
+  * Stop using deprecated `collections.abc.ByteString`.
 
 ## 1.1.2
 * Fix standard library json support.

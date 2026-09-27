@@ -3,7 +3,6 @@ import importlib.util
 import logging
 import re
 from base64 import b64decode, b64encode
-from collections.abc import ByteString
 from typing import Any
 
 JSON_LIBS_PREFERENCE = (
@@ -13,6 +12,7 @@ JSON_LIBS_PREFERENCE = (
 )
 JSON_PACKED_BYTES_PREFIX = '\x00'
 JSON_BATCH_SPLITTER = '\x1e'
+BYTES_TYPES = (bytes, bytearray)
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ if JSON_LIBRARY == 'json':
 
     class _WAMPJSONEncoder(json_lib.JSONEncoder):
         def default(self, obj: Any):
-            if isinstance(obj, ByteString):
+            if isinstance(obj, BYTES_TYPES):
                 return (
                     JSON_PACKED_BYTES_PREFIX
                     + b64encode(obj).decode('ascii')
@@ -53,7 +53,7 @@ elif JSON_LIBRARY == 'rapidjson':
 
     class _WAMPJSONEncoder(json_lib.Encoder):
         def default(self, obj: Any):
-            if isinstance(obj, ByteString):
+            if isinstance(obj, BYTES_TYPES):
                 return (
                     JSON_PACKED_BYTES_PREFIX
                     + b64encode(obj).decode('ascii')
@@ -68,7 +68,7 @@ elif JSON_LIBRARY == 'orjson':
                    'deserialization is not possible with this library.')
 
     def _obj_fallback(obj: Any) -> Any:
-        if isinstance(obj, ByteString):
+        if isinstance(obj, BYTES_TYPES):
             return (
                 JSON_PACKED_BYTES_PREFIX
                 + b64encode(obj).decode('ascii')
