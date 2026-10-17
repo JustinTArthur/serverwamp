@@ -149,8 +149,9 @@ def test_session_call_and_goodbye(ws_protocol):
         ]
 
         client.send([WAMPMsgType.GOODBYE, {}, 'wamp.close.close_realm'])
-        goodbye = await client.receive()
-        assert goodbye[0] == WAMPMsgType.GOODBYE
+        assert await client.receive() == [
+            WAMPMsgType.GOODBYE, {}, 'wamp.close.goodbye_and_out'
+        ]
 
         await client.disconnect()
 

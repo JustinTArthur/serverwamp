@@ -403,6 +403,26 @@ def test_close_sessions_after_client_left():
     run(exercise())
 
 
+def test_close_sessions_says_system_shutdown():
+    async def exercise():
+        connection = MemoryConnection()
+        app = build_app()
+        handling = asyncio.ensure_future(app.handle_connection(connection))
+        connection.inbound.put_nowait([WAMPMsgType.HELLO, REALM_URI, {}])
+        welcome = await connection.receive()
+        assert welcome[0] == WAMPMsgType.WELCOME
+
+        await app.close_sessions()
+        assert await connection.receive() == (
+            WAMPMsgType.GOODBYE, {}, 'wamp.close.system_shutdown'
+        )
+
+        await connection.close()
+        await asyncio.wait_for(handling, TIMEOUT)
+
+    run(exercise())
+
+
 @pytest.mark.parametrize('end_session', ('close', 'abort'))
 def test_end_session_after_client_left(end_session):
     async def exercise():

@@ -177,7 +177,7 @@ class WAMPSession:
         self._said_goodbye = True
         await self.close(uri, message)
 
-    async def close(self, uri=None, message=None):
+    async def close(self, uri='wamp.close.goodbye_and_out', message=None):
         if self.is_open and not self._said_goodbye:
             try:
                 await self.connection.send_msg(goodbye_msg(uri, message))

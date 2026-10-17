@@ -25,6 +25,9 @@ per WAMP spec, instead of `wamp.error.protocol_error`.
     is aborted with `wamp.error.authentication_failed`.
 * Fix GOODBYE details and reason being read from the wrong fields.
 `WAMPGoodbyeRequest` no longer has a `request_id`.
+* Give GOODBYE messages a reason instead of none. Replies to a client's GOODBYE
+and `WAMPSession.close()` without a reason use `wamp.close.goodbye_and_out`,
+and `Application.close_sessions()` uses `wamp.close.system_shutdown`.
 * Fix prefix and regex routes handling URIs they don't match. A call or
 subscription for a URI without an exact route went to the first prefix or regex
 route added.

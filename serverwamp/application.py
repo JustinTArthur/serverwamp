@@ -357,14 +357,15 @@ class Application:
                 )
 
     async def close_sessions(self):
-        """Cleanly close active WAMP sessions with goodbye message.
+        """Cleanly close active WAMP sessions with goodbye message, such as when
+        the server is shutting down.
 
         Better when clients close their own connections as it won't leave our
         TCP sockets in the TIME-WAIT state.
         """
         async with self._async_support.launch_task_group() as tasks:
             for session in self._active_sessions:
-                await tasks.spawn(session.close)
+                await tasks.spawn(session.close, 'wamp.close.system_shutdown')
 
     async def _process_protocol_msgs(self, msgs, connection, session):
         # Once the session is authenticated, order is not important to the WAMP
