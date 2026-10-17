@@ -189,6 +189,19 @@ class Realm:
                             message='Authentication failed.')
 
 
+async def abort_on_malformed_msgs(msgs, connection):
+    """Passes along a connection's messages until the transport can't
+    deserialize one, then aborts the connection and stops. Without this, the
+    deserialization error would escape the connection handler without the
+    client being told why.
+    """
+    try:
+        async for msg in msgs:
+            yield msg
+    except WAMPMsgParseError:
+        await connection.abort('wamp.error.protocol_error', 'Parse error.')
+
+
 @dataclass
 class CRAResponse:
     signature: str
@@ -261,16 +274,19 @@ class Application:
             )
 
         if msgs is None:
-            msgs = connection.iterate_msgs()
+            msgs = abort_on_malformed_msgs(connection.iterate_msgs(),
+                                           connection)
         await self._process_protocol_msgs(msgs, connection, session)
 
     async def handle_connection(self, connection):
         # A single iterator serves the whole connection so that messages the
         # transport already received, like the rest of a batch, aren't lost.
         msgs = connection.iterate_msgs()
+        checked_msgs = abort_on_malformed_msgs(msgs, connection)
         try:
-            await self._handle_connection_msgs(connection, msgs)
+            await self._handle_connection_msgs(connection, checked_msgs)
         finally:
+            await checked_msgs.aclose()
             aclose = getattr(msgs, 'aclose', None)
             if aclose:
                 await aclose()

@@ -5,9 +5,10 @@ from typing import AsyncIterator, Awaitable, Callable, Mapping, Union
 import msgpack
 
 from serverwamp.connection import Connection
-from serverwamp.helpers import objects_from_msgpack_batch, pack_uint32_be
+from serverwamp.helpers import (object_from_msgpack,
+                                objects_from_msgpack_batch, pack_uint32_be)
 from serverwamp.json import JSON_BATCH_SPLITTER
-from serverwamp.json import deserialize as deserialize_json
+from serverwamp.json import deserialize_msg as deserialize_json
 from serverwamp.json import objects_from_json_batch
 from serverwamp.json import serialize as serialize_json
 
@@ -160,7 +161,7 @@ class ASGIBatchedJSONWebSocketConnection(ASGIWebSocketConection):
 class ASGIMsgPackWebSocketConnection(ASGIWebSocketConection):
     async def iterate_msgs(self):
         async for ws_msg in self.iterate_ws_msgs('bytes'):
-            yield msgpack.unpackb(ws_msg, use_list=False)
+            yield object_from_msgpack(ws_msg)
 
     async def send_msg(self, msg):
         msg_bytes = msgpack.packb(msg)

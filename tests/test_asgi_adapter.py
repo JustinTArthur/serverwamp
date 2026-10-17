@@ -13,6 +13,22 @@ from memory_connection import TIMEOUT, run
 REALM_URI = 'test.realm'
 BATCH_SPLITTER = '\x1e'
 
+WS_PROTOCOLS = (
+    'wamp.2.json',
+    'wamp.2.json.batched',
+    'wamp.2.msgpack',
+    'wamp.2.msgpack.batched',
+)
+
+# WebSocket messages each subprotocol's deserializer rejects.
+MALFORMED_PAYLOADS = (
+    ('wamp.2.json', '[48, 2, {}, "x\\q"]'),
+    ('wamp.2.json.batched', '[48, 2, {}, "x\\q"]' + BATCH_SPLITTER),
+    ('wamp.2.msgpack', b'\xc1'),
+    ('wamp.2.msgpack.batched', b'\x00\x00'),
+    ('wamp.2.msgpack.batched', pack_uint32_be(1) + b'\xc1'),
+)
+
 
 def build_asgi_app():
     rpc_routes = serverwamp.RPCRouteSet()
@@ -77,6 +93,13 @@ class ASGIClient:
             event = {'type': 'websocket.receive', 'bytes': data}
         self._to_app.put_nowait(event)
 
+    def send_raw(self, payload):
+        """Sends a WebSocket message as-is, without serializing it."""
+        data_type = 'text' if self.uses_json else 'bytes'
+        self._to_app.put_nowait(
+            {'type': 'websocket.receive', data_type: payload}
+        )
+
     async def receive(self):
         while not self._received:
             event = await self._next_event()
@@ -110,14 +133,6 @@ class ASGIClient:
         await asyncio.wait_for(self.handling, TIMEOUT)
 
 
-WS_PROTOCOLS = (
-    'wamp.2.json',
-    'wamp.2.json.batched',
-    'wamp.2.msgpack',
-    'wamp.2.msgpack.batched',
-)
-
-
 @pytest.mark.parametrize('ws_protocol', WS_PROTOCOLS)
 def test_session_call_and_goodbye(ws_protocol):
     async def exercise():
@@ -138,6 +153,29 @@ def test_session_call_and_goodbye(ws_protocol):
         assert goodbye[0] == WAMPMsgType.GOODBYE
 
         await client.disconnect()
+
+    run(exercise())
+
+
+@pytest.mark.parametrize('in_session', (False, True))
+@pytest.mark.parametrize('ws_protocol, payload', MALFORMED_PAYLOADS)
+def test_malformed_message_aborts(ws_protocol, payload, in_session):
+    async def exercise():
+        client = ASGIClient(ws_protocol)
+        await client.start(build_asgi_app())
+
+        if in_session:
+            client.send([WAMPMsgType.HELLO, REALM_URI, {}])
+            welcome = await client.receive()
+            assert welcome[0] == WAMPMsgType.WELCOME
+
+        client.send_raw(payload)
+        abort = await client.receive()
+        assert abort[0] == WAMPMsgType.ABORT
+        assert abort[2] == 'wamp.error.protocol_error'
+        assert await client._next_event() == {'type': 'websocket.close'}
+
+        await asyncio.wait_for(client.handling, TIMEOUT)
 
     run(exercise())
 

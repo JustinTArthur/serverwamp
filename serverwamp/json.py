@@ -5,6 +5,8 @@ import re
 from base64 import b64decode, b64encode
 from typing import Any
 
+from serverwamp.protocol import WAMPMsgParseError
+
 JSON_LIBS_PREFERENCE = (
     'rapidjson',
     'orjson',
@@ -84,6 +86,18 @@ elif JSON_LIBRARY == 'orjson':
     deserialize = json_lib.loads
 
 
+def deserialize_msg(msg_json: str):
+    """Deserializes a WAMP message, raising WAMPMsgParseError if it isn't
+    valid JSON.
+    """
+    try:
+        return deserialize(msg_json)
+    except (ValueError, RecursionError) as exc:
+        # Every supported library's decode error is a ValueError. Older
+        # stdlib json raises RecursionError for deeply nested input.
+        raise WAMPMsgParseError('Malformed JSON') from exc
+
+
 def objects_from_json_batch(batch: str):
     for match in match_jsons_in_batch(batch):
-        yield deserialize(match[0])
+        yield deserialize_msg(match[0])

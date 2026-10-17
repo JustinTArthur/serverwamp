@@ -1,8 +1,11 @@
 import re
 import socket
 from struct import Struct
+from struct import error as struct_error
 
 import msgpack
+
+from serverwamp.protocol import WAMPMsgParseError
 
 sub_first_cap = re.compile('(.)([A-Z][a-z]+)').sub
 sub_all_caps = re.compile('([a-z0-9])([A-Z])').sub
@@ -24,13 +27,27 @@ def format_sockaddr(net_family, sockaddr) -> str:
     return str(sockaddr)
 
 
+def object_from_msgpack(obj_bytes: bytes):
+    """Deserializes a WAMP message, raising WAMPMsgParseError if it isn't
+    valid MessagePack.
+    """
+    try:
+        return msgpack.unpackb(obj_bytes, use_list=False)
+    except (ValueError, msgpack.UnpackException) as exc:
+        # Covers ExtraData, FormatError, StackError and incomplete input.
+        raise WAMPMsgParseError('Malformed MessagePack') from exc
+
+
 def objects_from_msgpack_batch(batch: bytes):
     batch_length = len(batch)
     current = 0
     while current < batch_length:
-        obj_len, = unpack_uint32_be(batch[current:current + 4])
+        try:
+            obj_len, = unpack_uint32_be(batch[current:current + 4])
+        except struct_error as exc:
+            raise WAMPMsgParseError('Truncated MessagePack batch') from exc
         current += 4
         obj_bytes = batch[current:current + obj_len]
         current += obj_len
 
-        yield msgpack.unpackb(obj_bytes, use_list=False)
+        yield object_from_msgpack(obj_bytes)

@@ -98,6 +98,72 @@ def test_handler_returns_websocket_response_after_abort(caplog, first_msg):
     assert_no_aiohttp_errors(caplog)
 
 
+@pytest.mark.parametrize('in_session', (False, True))
+@pytest.mark.parametrize('ws_protocol, payload', (
+    ('wamp.2.json', '[48, 2, {}, "x\\q"]'),
+    ('wamp.2.json.batched', '[48, 2, {}, "x\\q"]\x1e'),
+    ('wamp.2.msgpack', b'\xc1'),
+    ('wamp.2.msgpack.batched', b'\x00\x00'),
+    ('wamp.2.msgpack.batched', pack_uint32_be(1) + b'\xc1'),
+))
+def test_malformed_message_aborts(caplog, ws_protocol, payload, in_session):
+    handler_results = []
+    uses_json = ws_protocol.startswith('wamp.2.json')
+    batched = ws_protocol.endswith('.batched')
+
+    async def receive(ws):
+        if uses_json:
+            return json.loads((await ws.receive_str()).rstrip('\x1e'))
+        msg_bytes = await ws.receive_bytes()
+        return msgpack.unpackb(msg_bytes[4:] if batched else msg_bytes)
+
+    async def exercise():
+        client = await start_client(handler_results)
+        try:
+            ws = await client.ws_connect('/', protocols=(ws_protocol,))
+            if in_session:
+                hello = [WAMPMsgType.HELLO, REALM_URI, {}]
+                if uses_json:
+                    text = json.dumps(hello)
+                    await ws.send_str(text + '\x1e' if batched else text)
+                else:
+                    msg_bytes = msgpack.packb(hello)
+                    if batched:
+                        msg_bytes = pack_uint32_be(len(msg_bytes)) + msg_bytes
+                    await ws.send_bytes(msg_bytes)
+                welcome = await receive(ws)
+                assert welcome[0] == WAMPMsgType.WELCOME
+
+            if uses_json:
+                await ws.send_str(payload)
+            else:
+                await ws.send_bytes(payload)
+            abort = await receive(ws)
+            assert abort[0] == WAMPMsgType.ABORT
+            assert abort[2] == 'wamp.error.protocol_error'
+            closing = await ws.receive()
+            assert closing.type in (WSMsgType.CLOSE, WSMsgType.CLOSED)
+            await ws.close()
+
+            if in_session:
+                # aiohttp cancels the handler once the client disconnects,
+                # which here lands during session cleanup, so it doesn't
+                # return. Give it time to log any error that escaped instead.
+                await asyncio.sleep(0.1)
+            else:
+                await wait_for_handler(handler_results)
+        finally:
+            await client.close()
+
+    with caplog.at_level(logging.ERROR, logger='aiohttp'):
+        run(exercise())
+
+    if not in_session:
+        assert len(handler_results) == 1
+        assert isinstance(handler_results[0], web.WebSocketResponse)
+    assert_no_aiohttp_errors(caplog)
+
+
 @pytest.mark.parametrize('ws_protocol', (
     'wamp.2.json',
     'wamp.2.json.batched',

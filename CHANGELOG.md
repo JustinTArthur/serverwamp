@@ -1,4 +1,9 @@
 # serverwamp Changelog
+## Unreleased
+* Handle these client mistakes instead of failing in the connection handler:
+  * WebSocket messages that aren't valid JSON or MessagePack abort the
+    session with a protocol error.
+
 ## 1.2.0
 * Fix the default realm never being used. Sessions requesting a realm that
 wasn't added with `add_realm` now join the default realm as documented instead
