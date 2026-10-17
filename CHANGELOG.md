@@ -2,10 +2,13 @@
 ## Unreleased
 * Require Python 3.11 or newer. `serverwamp.context`, a backport of
 `contextlib.asynccontextmanager` for older Pythons, is removed.
-* Build the asyncio support on `asyncio.TaskGroup`. As with trio and anyio,
+* Build the asyncio support on `asyncio.TaskGroup`. As with Trio and AnyIO,
 task group failures, including unhandled errors while handling a connection,
 are raised as an `ExceptionGroup` instead of the first error alone, and a
 failing task interrupts the code that started the group.
+* Support current AnyIO and Trio releases, now requiring AnyIO 4 or newer and
+Trio 0.25 or newer. They can be installed with serverwamp's `anyio` and `trio`
+extras.
 * Abort sessions for protocol errors with `wamp.error.protocol_violation`,
 per WAMP spec, instead of `wamp.error.protocol_error`.
 * Handle these client mistakes instead of failing in the connection handler:

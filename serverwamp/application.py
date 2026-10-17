@@ -205,6 +205,13 @@ async def abort_on_malformed_msgs(msgs, connection):
         await connection.abort('wamp.error.protocol_violation', 'Parse error.')
 
 
+async def advance(async_iter):
+    """Awaits an async iterator's next item from a coroutine, as some async
+    supports only spawn coroutines, not other awaitables like __anext__()'s.
+    """
+    await async_iter.__anext__()
+
+
 @dataclass
 class CRAResponse:
     signature: str
@@ -489,7 +496,7 @@ class Application:
                     session=session
                 )
                 state_iter = handler(*args)
-                await start_tasks.spawn(state_iter.__anext__)
+                await start_tasks.spawn(advance, state_iter)
                 self._session_state_exits[session].add(state_iter)
 
     async def default_protocol_subscribe_handler(

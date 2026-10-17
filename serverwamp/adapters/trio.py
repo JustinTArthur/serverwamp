@@ -27,7 +27,7 @@ class TrioAsyncSupport(AsyncSupport):
 
 class TrioTaskGroup(AsyncTaskGroup):
     """In Trio's case, this is just a light wrapper around Nursery."""
-    def __init__(self, nursery):
+    def __init__(self, nursery: trio.Nursery):
         self._nursery = nursery
 
     async def cancel(self):

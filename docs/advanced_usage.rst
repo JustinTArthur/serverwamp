@@ -125,6 +125,10 @@ A few asynchronous support libraries are provided out of the box:
 • ``serverwamp.adapters.trio.TrioAsyncSupport`` for
   :doc:`Trio <trio:index>`
 
+AnyIO 4 or newer and Trio 0.25 or newer are supported. They can be installed
+along with serverwamp using its ``anyio`` or ``trio`` extra, such as with
+``pip install serverwamp[trio]``.
+
 Customizing Core WAMP Operations
 --------------------------------
 
