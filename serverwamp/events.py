@@ -1,7 +1,8 @@
-from collections.abc import Sequence
+from collections.abc import (AsyncIterator, Awaitable, Callable, Mapping,
+                             Sequence)
 from dataclasses import dataclass
-from typing import (Any, AsyncIterator, Awaitable, Callable, Mapping, Pattern,
-                    Union)
+from re import Pattern
+from typing import Any
 
 from serverwamp.routing import URIsRouter
 from serverwamp.session import WAMPSession
@@ -73,7 +74,7 @@ class TopicPrefixRouteDef:
 
 @dataclass(frozen=True)
 class TopicRegexRouteDef:
-    uri_pattern: Union[str, Pattern]
+    uri_pattern: str | Pattern[str]
     handler: Callable[..., Awaitable]
     kwargs: Mapping
 

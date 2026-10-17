@@ -1,19 +1,20 @@
 import inspect
 import logging
 from collections import defaultdict
+from collections.abc import (AsyncIterator, Awaitable, Callable, Collection,
+                             Mapping, MutableMapping, MutableSequence,
+                             MutableSet)
 from dataclasses import dataclass
 from hashlib import sha256
 from hmac import new as new_hmac
-from typing import (Any, AsyncIterator, Awaitable, Callable, Collection,
-                    Mapping, MutableMapping, MutableSequence, MutableSet,
-                    Optional, Type, Union)
+from typing import Any
 
 from serverwamp.adapters.async_base import AsyncSupport
 from serverwamp.connection import ConnectionClosed
 from serverwamp.events import SubscriptionHandler, TopicsRouter
 from serverwamp.protocol import (WAMPGoodbyeRequest, WAMPHelloRequest,
-                                 WAMPMsgParseError, WAMPRequest,
-                                 WAMPRPCRequest, WAMPSubscribeRequest,
+                                 WAMPMsgParseError, WAMPRPCRequest,
+                                 WAMPSubscribeRequest,
                                  WAMPUnsubscribeRequest,
                                  call_error_response_msg,
                                  call_result_response_msg,
@@ -26,18 +27,15 @@ from serverwamp.rpc import (RPCErrorResult, RPCHandler, RPCProgressReport,
 from serverwamp.session import NoSuchSubscription, WAMPSession
 
 ALWAYS_SYNCHRONIZE = frozenset((WAMPSubscribeRequest, WAMPUnsubscribeRequest))
-EMPTY_SET = frozenset()
+EMPTY_SET: frozenset[Any] = frozenset()
 
 logger = logging.getLogger(__name__)
 
-ProtocolRequestHandlerMap = Mapping[
-    Type[WAMPRequest],
-    Callable[[WAMPRequest, WAMPSession], Awaitable[None]]
-]
-MutableProtocolRequestHandlerMap = MutableMapping[
-    Type[WAMPRequest],
-    Callable[[WAMPRequest, WAMPSession], Awaitable[None]]
-]
+# Each handler takes requests of the type it's mapped from, which a mapping
+# type can't express, so its request parameter is typed as Any.
+ProtocolRequestHandler = Callable[[Any, WAMPSession], Awaitable[None]]
+ProtocolRequestHandlerMap = Mapping[type, ProtocolRequestHandler]
+MutableProtocolRequestHandlerMap = MutableMapping[type, ProtocolRequestHandler]
 
 CoreAuthenticator = Callable[[WAMPSession], Awaitable[None]]
 TransportAuthenticator = Callable[[WAMPSession], Awaitable[Any]]
@@ -58,7 +56,7 @@ SessionStateHandler = Callable[[WAMPSession], AsyncIterator[None]]
 
 
 class Realm:
-    def __init__(self, uri: Optional[str] = None):
+    def __init__(self, uri: str | None = None):
         self.uri = uri
         self.authenticate_session: CoreAuthenticator = self.default_auth_handler
 
@@ -67,15 +65,17 @@ class Realm:
 
         self._rpc_router = RPCRouter()
         self._topic_router = TopicsRouter()
-        self.handle_rpc_call = self._rpc_router.handle_rpc_call
-        self.handle_subscription = self._topic_router.handle_subscription
+        self.handle_rpc_call: RPCHandler = self._rpc_router.handle_rpc_call
+        self.handle_subscription: SubscriptionHandler = (
+            self._topic_router.handle_subscription
+        )
 
         self._default_arg_factories: MutableMapping[str, Callable[[], Any]] = {}
 
-        self._authenticate_ticket: Optional[TicketAuthenticator] = None
+        self._authenticate_ticket: TicketAuthenticator | None = None
         self._transport_authenticators: MutableSequence[TransportAuthenticator] = []
-        self._get_cra_requirement: Optional[CRARequirementProvider] = None
-        self._identify_cra_session: Optional[CRAIdentityProvider] = None
+        self._get_cra_requirement: CRARequirementProvider | None = None
+        self._identify_cra_session: CRAIdentityProvider | None = None
 
     def set_authentication_handler(
         self,
@@ -123,8 +123,8 @@ class Realm:
     def set_default_arg(
         self,
         arg_name,
-        value: Optional[Any] = None,
-        factory: Optional[Callable] = None
+        value: Any = None,
+        factory: Callable | None = None
     ) -> None:
         self._rpc_router.set_default_arg(arg_name, value, factory)
         self._topic_router.set_default_arg(arg_name, value, factory)
@@ -222,9 +222,9 @@ class Application:
     def __init__(
         self,
         allow_default_realm=True,
-        async_support: Optional[Type[AsyncSupport]] = None,
+        async_support: type[AsyncSupport] | None = None,
         synchronize_requests: bool = False,
-        protocol_request_handlers: Optional[ProtocolRequestHandlerMap] = None,
+        protocol_request_handlers: ProtocolRequestHandlerMap | None = None,
     ):
         if async_support:
             self._async_support = async_support
@@ -261,7 +261,7 @@ class Application:
     async def handle_session(
         self,
         session: WAMPSession,
-        msgs: Optional[AsyncIterator] = None
+        msgs: AsyncIterator | None = None
     ):
         self._active_sessions.add(session)
         connection = session.connection
@@ -477,8 +477,8 @@ class Application:
     def set_default_arg(
         self,
         arg_name,
-        value: Optional[Any] = None,
-        factory: Optional[Callable] = None
+        value: Any = None,
+        factory: Callable | None = None
     ) -> None:
         self._enabled_default_realm.set_default_arg(arg_name, value, factory)
 
@@ -569,7 +569,7 @@ class Application:
 
     def asgi_application(
         self,
-        paths: Optional[Collection[str]] = None
+        paths: Collection[str] | None = None
     ):
         from serverwamp.adapters.asgi import (connection_for_asgi_invocation,
                                               handle_asgi_lifespan,
@@ -597,7 +597,7 @@ class Application:
 
     def legacy_asgi_application(
         self,
-        paths: Optional[Collection[str]] = None
+        paths: Collection[str] | None = None
     ):
         from serverwamp.adapters.asgi import (connection_for_asgi_invocation,
                                               handle_asgi_lifespan,
@@ -630,7 +630,7 @@ class Application:
         return application_callable
 
 
-def verify_cra_response(response: CRAResponse, secret: Union[bytes, bytearray]):
+def verify_cra_response(response: CRAResponse, secret: bytes | bytearray):
     hmac = new_hmac(key=secret, msg=response.challenge.encode('utf-8'),
                     digestmod=sha256)
     return response.signature.encode('utf-8') == hmac.digest()

@@ -1,8 +1,9 @@
 import inspect
-from collections.abc import Sequence
+from collections.abc import (AsyncIterator, Awaitable, Callable, Mapping,
+                             Sequence)
 from dataclasses import dataclass, field
-from typing import (Any, AsyncIterator, Awaitable, Callable, Mapping, Optional,
-                    Pattern, Union)
+from re import Pattern
+from typing import Any
 
 from serverwamp.helpers import camel_to_snake
 from serverwamp.routing import URIsRouter
@@ -33,7 +34,7 @@ class RPCRequest:
     timeout: int = 0
     disclose_caller: bool = False
     receive_progress: bool = False
-    partition_route: Optional[str] = None
+    partition_route: str | None = None
 
 
 @dataclass
@@ -57,7 +58,7 @@ class RPCRouter(URIsRouter):
     async def handle_rpc_call(
         self,
         rpc_request: RPCRequest
-    ) -> AsyncIterator[Union[RPCResult, RPCErrorResult]]:
+    ) -> AsyncIterator[RPCResult | RPCErrorResult]:
         procedure = self.resolve(rpc_request.uri)
 
         if self.camel_snake_conversion:
@@ -158,7 +159,7 @@ class RPCPrefixRouteDef:
 
 @dataclass(frozen=True)
 class RPCRegexRouteDef:
-    uri_pattern: Union[str, Pattern]
+    uri_pattern: str | Pattern[str]
     handler: Callable[..., Awaitable]
     kwargs: Mapping
 
@@ -213,10 +214,8 @@ class RPCRouteSet(Sequence):
 
 RPCHandler = Callable[
     [RPCRequest],
-    Union[
-        Awaitable[Union[RPCResult, RPCErrorResult]],
-        AsyncIterator[Union[RPCProgressReport, RPCResult, RPCErrorResult]]
-    ]
+    Awaitable[RPCResult | RPCErrorResult]
+    | AsyncIterator[RPCProgressReport | RPCResult | RPCErrorResult]
 ]
 
 

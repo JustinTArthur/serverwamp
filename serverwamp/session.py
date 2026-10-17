@@ -1,6 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Iterable, Iterator
+from collections.abc import Iterable, Iterator
+from typing import Any
 
 from serverwamp.adapters.async_base import AsyncTaskGroup
 from serverwamp.connection import ConnectionClosed
@@ -56,10 +57,10 @@ class WAMPSession:
         self.realm = realm
         self.identity = NO_IDENTITY
 
-        self._custom_state = {}
+        self._custom_state: dict[str, Any] = {}
         self._said_goodbye = False
-        self._subscriptions = {}
-        self._subscriptions_ids = {}
+        self._subscriptions: dict[str, int] = {}
+        self._subscriptions_ids: dict[int, str] = {}
         self._tasks = tasks
         self._authenticated = False
 

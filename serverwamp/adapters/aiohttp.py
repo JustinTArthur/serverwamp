@@ -1,6 +1,6 @@
 from abc import ABCMeta
+from collections.abc import Mapping
 from ssl import SSLObject
-from typing import Optional
 
 import aiohttp
 import msgpack
@@ -58,7 +58,7 @@ class AiohttpWebSocketConnection(Connection, metaclass=ABCMeta):
             self.transport_info['peer_certificate'] = (
                 request.transport.get_extra_info('peercert')
             )
-            ssl_obj: Optional[SSLObject] = (
+            ssl_obj: SSLObject | None = (
                 request.transport.get_extra_info('ssl_object')
             )
             if ssl_obj:
@@ -170,7 +170,9 @@ class AiohttpBatchedMsgPackWebSocketConnection(AiohttpWebSocketConnection):
             raise ConnectionClosed() from None
 
 
-ws_protocol_connection_classes = {
+ws_protocol_connection_classes: Mapping[
+    str, type[AiohttpWebSocketConnection]
+] = {
     'wamp.2.msgpack': AiohttpMsgPackWebSocketConnection,
     'wamp.2.msgpack.batched': AiohttpBatchedMsgPackWebSocketConnection,
     'wamp.2.json': AiohttpJSONWebSocketConnection,

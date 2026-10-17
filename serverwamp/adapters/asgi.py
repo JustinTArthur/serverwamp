@@ -1,6 +1,6 @@
 from abc import ABCMeta
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from http.cookies import CookieError, SimpleCookie
-from typing import AsyncIterator, Awaitable, Callable, Mapping, Union
 
 import msgpack
 
@@ -122,7 +122,7 @@ class ASGIWebSocketConection(Connection, metaclass=ABCMeta):
     async def iterate_ws_msgs(
         self,
         data_type: str
-    ) -> AsyncIterator[Union[bytes, str]]:
+    ) -> AsyncIterator[bytes | str]:
         """Get all WebSocket messages of a certain type. Close connection
         if wrong type comes through (WAMP WebSockets don't mix types)
         """
@@ -238,7 +238,9 @@ class ASGIBatchedMsgPackWebSocketConnection(ASGIWebSocketConection):
             raise ConnectionClosed() from None
 
 
-ws_protocol_connection_classes = {
+ws_protocol_connection_classes: Mapping[
+    str, type[ASGIWebSocketConection]
+] = {
     'wamp.2.msgpack': ASGIMsgPackWebSocketConnection,
     'wamp.2.msgpack.batched': ASGIBatchedMsgPackWebSocketConnection,
     'wamp.2.json': ASGIJSONWebSocketConnection,

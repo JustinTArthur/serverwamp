@@ -1,6 +1,5 @@
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Set
 
 from serverwamp.adapters.async_base import AsyncSupport, AsyncTaskGroup
 
@@ -35,7 +34,7 @@ class AsyncioTaskGroup(AsyncTaskGroup):
     """
     def __init__(self, asyncio_task_group: asyncio.TaskGroup):
         self._asyncio_task_group = asyncio_task_group
-        self._tasks: Set[asyncio.Task] = set()
+        self._tasks: set[asyncio.Task] = set()
         self._closed = False
 
     async def spawn(self, callback, *callback_args, **callback_kwargs):

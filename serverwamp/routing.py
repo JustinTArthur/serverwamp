@@ -1,6 +1,8 @@
 import re
-from typing import (Any, Awaitable, Callable, MutableMapping, MutableSequence,
-                    Optional, Pattern, Tuple, Union)
+from collections.abc import (Awaitable, Callable, MutableMapping,
+                             MutableSequence)
+from re import Pattern
+from typing import Any
 
 
 class URIsRouter:
@@ -13,7 +15,7 @@ class URIsRouter:
             str, Callable[..., Awaitable]
         ] = {}
         self._pattern_dispatch_table: MutableSequence[
-            Tuple[Pattern, Callable[..., Awaitable]]
+            tuple[Pattern[str], Callable[..., Awaitable]]
         ] = []
 
         self.camel_snake_conversion = camel_snake_conversion
@@ -22,8 +24,8 @@ class URIsRouter:
     def set_default_arg(
         self,
         arg_name,
-        value: Optional[Any] = None,
-        factory: Optional[Callable[[], Any]] = None,
+        value: Any = None,
+        factory: Callable[[], Any] | None = None,
     ):
         self.default_arg_factories[arg_name] = ((lambda: value)
                                                 if factory is None
@@ -48,7 +50,7 @@ class URIsRouter:
 
     def add_regex_route(
         self,
-        uri_pattern: Union[str, Pattern],
+        uri_pattern: str | Pattern[str],
         handler: Callable
     ):
         if isinstance(uri_pattern, str):

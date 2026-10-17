@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 match_jsons_in_batch = re.compile(f'[^{JSON_BATCH_SPLITTER}]+').finditer
 
+# Chosen at import time, so its API is only known per branch below.
+json_lib: Any
 for module in JSON_LIBS_PREFERENCE:
     if importlib.util.find_spec(module):
         json_lib = importlib.import_module(module)
@@ -47,13 +49,13 @@ if JSON_LIBRARY == 'json':
     serialize = _WAMPJSONEncoder().encode
 
 elif JSON_LIBRARY == 'rapidjson':
-    class _WAMPJSONDecoder(json_lib.Decoder):
+    class _WAMPRapidJSONDecoder(json_lib.Decoder):
         def string(self, s: str):
             if s and s[0] == JSON_PACKED_BYTES_PREFIX:
                 return b64decode(s[1:])
             return s
 
-    class _WAMPJSONEncoder(json_lib.Encoder):
+    class _WAMPRapidJSONEncoder(json_lib.Encoder):
         def default(self, obj: Any):
             if isinstance(obj, BYTES_TYPES):
                 return (
@@ -62,8 +64,8 @@ elif JSON_LIBRARY == 'rapidjson':
                 )
             raise TypeError(f'{obj} is not JSON serializable')
 
-    deserialize = _WAMPJSONDecoder()
-    serialize = _WAMPJSONEncoder()
+    deserialize = _WAMPRapidJSONDecoder()
+    serialize = _WAMPRapidJSONEncoder()
 
 elif JSON_LIBRARY == 'orjson':
     logger.warning('Found orjson library for JSON serialization. Binary value '

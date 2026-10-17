@@ -2,12 +2,13 @@ import json
 import logging
 import secrets
 from base64 import b64encode
-from collections.abc import Sequence
+from collections.abc import (Callable, Iterable, Mapping, MutableMapping,
+                             Sequence)
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import IntEnum, unique
 from random import randint
-from typing import Any, Iterable, Mapping, MutableMapping, Optional
+from typing import Any, Self
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ def generate_global_id():
 
 
 class AuthenticationFailure(Exception):
-    def __init__(self, reason: str = None):
+    def __init__(self, reason: str | None = None):
         self.reason = reason
 
 
@@ -56,7 +57,7 @@ class WAMPHelloRequest:
     details: Mapping
 
     @classmethod
-    def from_msg_data(cls, msg_data: Sequence):
+    def from_msg_data(cls, msg_data: Sequence) -> Self:
         if (
             len(msg_data) < 2
             or not isinstance(msg_data[0], str)
@@ -89,7 +90,7 @@ class WAMPSubscribeRequest(WAMPRequest):
     options: Mapping
 
     @classmethod
-    def from_msg_data(cls, msg_data: Sequence):
+    def from_msg_data(cls, msg_data: Sequence) -> Self:
         if (
             len(msg_data) < 3
             or not isinstance(msg_data[0], int)
@@ -122,7 +123,7 @@ class WAMPUnsubscribeRequest(WAMPRequest):
     subscription: int
 
     @classmethod
-    def from_msg_data(cls, msg_data: Sequence):
+    def from_msg_data(cls, msg_data: Sequence) -> Self:
         if (
             len(msg_data) < 2
             or not isinstance(msg_data[0], int)
@@ -158,7 +159,7 @@ class WAMPRPCRequest(WAMPRequest):
     kwargs: Mapping = field(default_factory=dict)
 
     @classmethod
-    def from_msg_data(cls, msg_data: Sequence):
+    def from_msg_data(cls, msg_data: Sequence) -> Self:
         field_count = len(msg_data)
         if (
             field_count < 3
@@ -202,7 +203,7 @@ class WAMPGoodbyeRequest:
     details: Mapping = field(default_factory=dict)
 
     @classmethod
-    def from_msg_data(cls, msg_data: Sequence):
+    def from_msg_data(cls, msg_data: Sequence) -> Self:
         # GOODBYE has no request ID: [GOODBYE, Details|dict, Reason|uri]
         if (
             len(msg_data) < 2
@@ -215,7 +216,7 @@ class WAMPGoodbyeRequest:
 
 def call_result_response_msg(
     request: WAMPRPCRequest,
-    args: Optional[Sequence] = None,
+    args: Sequence | None = None,
     kwargs=None,
     progress=False
 ) -> Sequence:
@@ -233,8 +234,8 @@ def call_result_response_msg(
 def call_error_response_msg(
     request: WAMPRPCRequest,
     error_uri: str,
-    args: Optional[Sequence] = None,
-    kwargs: Optional[Mapping] = None
+    args: Sequence | None = None,
+    kwargs: Mapping | None = None
 ):
     if kwargs:
         return (WAMPMsgType.ERROR, WAMPMsgType.CALL, request.request_id, {},
@@ -304,7 +305,7 @@ def scram_nonce() -> str:
 
 
 def welcome_msg(session_id, agent_name=None) -> Iterable:
-    details = {
+    details: dict[str, Any] = {
         'roles': {
             'broker': {},
             'dealer': {}
@@ -336,10 +337,10 @@ def abort_msg(reason_uri, message=None):
 def event_msg(
     subscription_id: int,
     publication_id: int,
-    args: Optional[Sequence] = (),
-    kwargs: Optional[Mapping] = None,
-    trust_level: Optional[int] = None,
-    specific_topic: Optional[str] = None
+    args: Sequence | None = (),
+    kwargs: Mapping | None = None,
+    trust_level: int | None = None,
+    specific_topic: str | None = None
 ):
     details: MutableMapping[str, Any] = {}
     if trust_level is not None:
@@ -363,7 +364,7 @@ def cra_challenge_string(
     auth_role: str,
     auth_provider: str,
     nonce: str,
-    auth_time: Optional[datetime] = None
+    auth_time: datetime | None = None
 ) -> str:
     """Returns a string used in a WAMP CRA challenge using a mix of identifying
     and random data."""
@@ -383,7 +384,18 @@ def cra_challenge_string(
     return challenge_string
 
 
-request_parser_for_msg_type = {
+# The requests serverwamp parses from clients' messages.
+WAMPInboundRequest = (
+    WAMPHelloRequest
+    | WAMPRPCRequest
+    | WAMPSubscribeRequest
+    | WAMPUnsubscribeRequest
+    | WAMPGoodbyeRequest
+)
+
+request_parser_for_msg_type: Mapping[
+    int, Callable[[Sequence], WAMPInboundRequest]
+] = {
     WAMPMsgType.HELLO: WAMPHelloRequest.from_msg_data,
     WAMPMsgType.CALL: WAMPRPCRequest.from_msg_data,
     WAMPMsgType.SUBSCRIBE: WAMPSubscribeRequest.from_msg_data,
@@ -394,7 +406,7 @@ request_parser_for_msg_type = {
 
 def wamp_request_from_msg(
     msg: Sequence
-) -> WAMPRequest:
+) -> WAMPInboundRequest:
     if not isinstance(msg, LIST_TYPES) or not msg:
         raise WAMPMsgParseError('Not a WAMP message')
     msg_type, *msg_data = msg

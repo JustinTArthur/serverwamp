@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 from serverwamp.protocol import abort_msg
 
@@ -45,7 +45,11 @@ class Connection(ABC):
     async def close(self):
         pass
 
-    async def abort(self, reason_uri: str = "no_reason", msg: str = None):
+    async def abort(
+        self,
+        reason_uri: str = "no_reason",
+        msg: str | None = None
+    ):
         try:
             await self.send_msg(abort_msg(reason_uri, msg))
         except ConnectionClosed:

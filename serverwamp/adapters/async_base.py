@@ -3,9 +3,10 @@ Defines base classes for how async support classes should look, mostly
 to ease serverwamp development or to ease integration in type-checked projects.
 """
 from abc import ABC, abstractmethod
-from typing import AsyncContextManager, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from contextlib import AbstractAsyncContextManager
 
-TaskGroupManager = AsyncContextManager['AsyncTaskGroup']
+TaskGroupManager = AbstractAsyncContextManager['AsyncTaskGroup']
 
 
 class AsyncTaskGroup(ABC):
