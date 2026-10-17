@@ -183,19 +183,16 @@ class WAMPRPCErrorResponse:
 
 
 @dataclass(frozen=True)
-class WAMPGoodbyeRequest(WAMPRequest):
+class WAMPGoodbyeRequest:
     reason_uri: str
     details: Mapping = field(default_factory=dict)
 
     @classmethod
     def from_msg_data(cls, msg_data: Sequence):
+        # GOODBYE has no request ID: [GOODBYE, Details|dict, Reason|uri]
         try:
-            request = cls(
-                request_id=msg_data[0],
-                details=msg_data[1],
-                reason_uri=msg_data[2] if len(msg_data) > 2 else None
-            )
-        except KeyError:
+            request = cls(details=msg_data[0], reason_uri=msg_data[1])
+        except IndexError:
             raise WAMPMsgParseError('Poorly formed goodbye')
         return request
 
