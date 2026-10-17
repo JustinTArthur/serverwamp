@@ -21,8 +21,8 @@ class TrioAsyncSupport(AsyncSupport):
         *callback_args,
         **callback_kwargs
     ):
-        with trio.CancelScope() as cancel_scope:
-            cancel_scope.shield = True
+        with trio.CancelScope(shield=True):
+            return await callback(*callback_args, **callback_kwargs)
 
 
 class TrioTaskGroup(AsyncTaskGroup):

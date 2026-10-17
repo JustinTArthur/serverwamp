@@ -34,6 +34,9 @@ cancelling the session's other calls, and keeping the session in memory.
 handled, instead of at garbage collection.
 * Wait for tasks started with `WAMPSession.spawn_task()` while a session ends,
 instead of cancelling them.
+* Fix sessions never being cleaned up with Trio. Teardown after `yield` in
+subscription and session state handlers now runs, and ended sessions are no
+longer kept in memory.
 
 ## 1.2.0
 * Fix the default realm never being used. Sessions requesting a realm that
