@@ -114,16 +114,22 @@ class RPCRouter(URIsRouter):
 
         procedure_invocation = procedure(*call_args, **call_kwargs)
         if isinstance(procedure_invocation, AsyncIterator):
-            while True:
-                try:
-                    return_value = await procedure_invocation.__anext__()
-                except StopAsyncIteration:
-                    break
-                result = _yielded_value_to_result(return_value)
-                yield result
-                if not isinstance(result, RPCProgressReport):
-                    # Anything other than a progress report is the final msg.
-                    break
+            try:
+                while True:
+                    try:
+                        return_value = await procedure_invocation.__anext__()
+                    except StopAsyncIteration:
+                        break
+                    result = _yielded_value_to_result(return_value)
+                    yield result
+                    if not isinstance(result, RPCProgressReport):
+                        # Anything other than a progress report is the final
+                        # msg.
+                        break
+            finally:
+                aclose = getattr(procedure_invocation, 'aclose', None)
+                if aclose:
+                    await aclose()
         else:
             return_value = await procedure_invocation
             result = _yielded_value_to_result(return_value)

@@ -5,7 +5,8 @@ import logging
 import pytest
 
 import serverwamp
-from serverwamp.protocol import WAMPMsgType
+from serverwamp.application import default_protocol_rpc_handler
+from serverwamp.protocol import WAMPMsgType, WAMPRPCRequest
 from serverwamp.session import WAMPSession
 
 from memory_connection import TIMEOUT, MemoryConnection, run
@@ -328,3 +329,56 @@ def test_disconnect_with_rpcs_in_flight(caplog, synchronize_requests):
     # With synchronize_requests, the session stops handling messages once the
     # client is gone. Otherwise, calls already started all finish.
     assert finished_calls == ([1] if synchronize_requests else [1, 2])
+
+
+@pytest.mark.parametrize('disconnect', (False, True))
+def test_progressive_rpc_closed_when_handled(disconnect):
+    events = []
+    rpc_routes = serverwamp.RPCRouteSet()
+
+    @rpc_routes.route('progressive')
+    async def progressive():
+        try:
+            yield serverwamp.RPCProgressReport(args=('halfway',))
+            await asyncio.sleep(0.05)
+            yield 'done'
+            # Not reached; the result above is final.
+            yield 'extra'
+        finally:
+            events.append('procedure closed')
+
+    async def rpc_handler(request, session):
+        try:
+            await default_protocol_rpc_handler(request, session)
+        finally:
+            events.append('call handled')
+
+    async def exercise():
+        connection = DisconnectingMemoryConnection()
+        realm = serverwamp.Realm(REALM_URI)
+        realm.add_rpc_routes(rpc_routes)
+        app = serverwamp.Application(
+            allow_default_realm=False,
+            protocol_request_handlers={WAMPRPCRequest: rpc_handler}
+        )
+        app.add_realm(realm)
+        handling = asyncio.ensure_future(app.handle_connection(connection))
+        connection.inbound.put_nowait([WAMPMsgType.HELLO, REALM_URI, {}])
+        welcome = await connection.receive()
+        assert welcome[0] == WAMPMsgType.WELCOME
+
+        connection.inbound.put_nowait([
+            WAMPMsgType.CALL, 1, {'receive_progress': True}, 'progressive'
+        ])
+        progress = await connection.receive()
+        assert progress[2] == {'progress': True}
+        if not disconnect:
+            result = await connection.receive()
+            assert result[3] == ('done',)
+        await connection.close()
+        await asyncio.wait_for(handling, TIMEOUT)
+
+    run(exercise())
+    # The procedure is closed as soon as its call is handled, not later by
+    # the event loop's async generator finalizer.
+    assert events[:2] == ['procedure closed', 'call handled']

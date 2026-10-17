@@ -639,54 +639,62 @@ async def default_protocol_rpc_handler(
     )
     invocation = session.realm.handle_rpc_call(rpc_request=rpc_request)
     if isinstance(invocation, AsyncIterator):
-        yielded_anything = False
-        while True:
-            # noinspection PyBroadException
-            try:
-                result = await invocation.__anext__()
-            except StopAsyncIteration:
-                break
-            except Exception:
-                result = RPCErrorResult('wamp.error.runtime_error')
-                logger.exception(
-                    'Exception from call handler for procedure %s',
-                    request.uri
-                )
-            else:
-                yielded_anything = True
+        try:
+            yielded_anything = False
+            while True:
+                # noinspection PyBroadException
+                try:
+                    result = await invocation.__anext__()
+                except StopAsyncIteration:
+                    break
+                except Exception:
+                    result = RPCErrorResult('wamp.error.runtime_error')
+                    logger.exception(
+                        'Exception from call handler for procedure %s',
+                        request.uri
+                    )
+                else:
+                    yielded_anything = True
 
-            if isinstance(result, RPCProgressReport):
+                if isinstance(result, RPCProgressReport):
+                    await session.send_raw(
+                        call_result_response_msg(request, result.args,
+                                                 result.kwargs, progress=True)
+                    )
+                    continue
+
+                # Anything other than a progress report is the final message.
+
+                if isinstance(result, RPCErrorResult):
+                    await session.send_raw(
+                        call_error_response_msg(request, result.error_uri,
+                                                result.args, result.kwargs)
+
+                    )
+                    return
+
                 await session.send_raw(
-                    call_result_response_msg(request, result.args,
-                                             result.kwargs, progress=True)
-                )
-                continue
-
-            # Anything other than a progress report is the final message.
-
-            if isinstance(result, RPCErrorResult):
-                await session.send_raw(
-                    call_error_response_msg(request, result.error_uri,
-                                            result.args, result.kwargs)
-
+                    call_result_response_msg(request, result.args, result.kwargs)
                 )
                 return
+            if not yielded_anything:
+                await session.send_raw(
+                    call_error_response_msg(request, 'wamp.error.runtime_error')
 
-            await session.send_raw(
-                call_result_response_msg(request, result.args, result.kwargs)
-            )
-            return
-        if not yielded_anything:
-            await session.send_raw(
-                call_error_response_msg(request, 'wamp.error.runtime_error')
-
-            )
-            logger.error(
-                'Call handler for procedure %s failed to yield or return a '
-                'result.',
-                request.uri
-            )
-            return
+                )
+                logger.error(
+                    'Call handler for procedure %s failed to yield or return a '
+                    'result.',
+                    request.uri
+                )
+                return
+        finally:
+            # Lets the handler clean up right away if the client left before
+            # it finished or it yielded past its final result, instead of
+            # whenever the event loop finalizes it.
+            aclose = getattr(invocation, 'aclose', None)
+            if aclose:
+                await aclose()
 
     # noinspection PyBroadException
     try:
