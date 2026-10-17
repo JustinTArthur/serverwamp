@@ -1,6 +1,5 @@
 import asyncio
 import gc
-import logging
 
 import pytest
 
@@ -23,11 +22,12 @@ def test_task_failing_before_wait_is_retrieved_and_raised():
         asyncio.get_event_loop().set_exception_handler(
             lambda loop, context: loop_errors.append(context)
         )
-        with pytest.raises(TaskError):
+        with pytest.raises(ExceptionGroup) as exc_info:
             async with AsyncioAsyncSupport.launch_task_group() as tasks:
                 await tasks.spawn(fail)
                 # The task fails while the group's body is still running.
                 await asyncio.sleep(0.01)
+        assert exc_info.group_contains(TaskError)
         gc.collect()
         await asyncio.sleep(0)
 
@@ -35,7 +35,7 @@ def test_task_failing_before_wait_is_retrieved_and_raised():
     assert not loop_errors
 
 
-def test_failure_cancels_siblings(caplog):
+def test_failure_cancels_siblings():
     events = []
 
     async def fail():
@@ -50,20 +50,19 @@ def test_failure_cancels_siblings(caplog):
             raise
 
     async def exercise():
-        with pytest.raises(TaskError):
+        with pytest.raises(ExceptionGroup) as exc_info:
             async with AsyncioAsyncSupport.launch_task_group() as tasks:
                 await tasks.spawn(fail)
                 # Fails before the first failure's cancellations go out.
                 await tasks.spawn(fail)
                 await tasks.spawn(sibling)
         events.append('group exited')
+        # The second failure is raised rather than lost.
+        assert len(exc_info.value.exceptions) == 2
 
-    with caplog.at_level(logging.ERROR):
-        run(exercise())
+    run(exercise())
     # The group waits for the cancelled sibling before raising.
     assert events == ['sibling cancelled', 'group exited']
-    # The second failure is logged rather than lost.
-    assert [record.exc_info[0] for record in caplog.records] == [TaskError]
 
 
 def test_task_spawned_after_failure_is_cancelled():
@@ -75,15 +74,33 @@ def test_task_spawned_after_failure_is_cancelled():
     async def record():
         events.append('late task ran')
 
+    async def spawn_late(tasks):
+        try:
+            await asyncio.sleep(1)
+        finally:
+            await tasks.spawn(record)
+
     async def exercise():
-        with pytest.raises(TaskError):
+        with pytest.raises(ExceptionGroup):
             async with AsyncioAsyncSupport.launch_task_group() as tasks:
+                await tasks.spawn(spawn_late, tasks)
                 await tasks.spawn(fail)
-                await asyncio.sleep(0.01)
-                await tasks.spawn(record)
 
     run(exercise())
     assert not events
+
+
+def test_task_spawned_after_group_exited_raises():
+    async def record():
+        pass
+
+    async def exercise():
+        async with AsyncioAsyncSupport.launch_task_group() as tasks:
+            pass
+        with pytest.raises(RuntimeError):
+            await tasks.spawn(record)
+
+    run(exercise())
 
 
 def test_wait_includes_tasks_spawned_while_waiting():
@@ -105,17 +122,45 @@ def test_wait_includes_tasks_spawned_while_waiting():
     assert finished == ['late task']
 
 
-def test_errors_logged_when_wait_not_reached(caplog):
-    async def fail():
-        raise TaskError()
+def test_body_error_cancels_tasks_and_is_raised():
+    events = []
+
+    async def wait_forever():
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            events.append('cancelled')
+            raise
 
     async def exercise():
-        with pytest.raises(KeyError):
+        with pytest.raises(ExceptionGroup) as exc_info:
             async with AsyncioAsyncSupport.launch_task_group() as tasks:
-                await tasks.spawn(fail)
-                await asyncio.sleep(0.01)
+                await tasks.spawn(wait_forever)
+                await asyncio.sleep(0)
                 raise KeyError()
+        assert exc_info.group_contains(KeyError)
 
-    with caplog.at_level(logging.ERROR):
-        run(exercise())
-    assert [record.exc_info[0] for record in caplog.records] == [TaskError]
+    run(exercise())
+    assert events == ['cancelled']
+
+
+def test_cancel_ends_tasks_without_failing_the_group():
+    events = []
+
+    async def wait_forever():
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            events.append('cancelled')
+            raise
+
+    async def exercise():
+        async with AsyncioAsyncSupport.launch_task_group() as tasks:
+            await tasks.spawn(wait_forever)
+            await tasks.spawn(wait_forever)
+            await asyncio.sleep(0)
+            await tasks.cancel()
+        events.append('group exited')
+
+    run(exercise())
+    assert events == ['cancelled', 'cancelled', 'group exited']
