@@ -23,6 +23,16 @@ route added.
     `prefix_route('')` after their other prefix and regex routes.
 * Answer SUBSCRIBE for a topic the session is already subscribed to with the
 existing subscription, without running the subscription handler again.
+* Fix RPCs that finish after their client disconnected logging errors,
+cancelling the session's other calls, and keeping the session in memory.
+  * Sends to a disconnected client raise `serverwamp.ConnectionClosed`, a
+    `ConnectionError`, instead of the transport's own exception.
+  * Unhandled exceptions from a session's tasks are logged. With Trio or AnyIO,
+    they no longer end the session.
+* Run progressive RPC handlers' `finally` blocks as soon as their call is
+handled, instead of at garbage collection.
+* Wait for tasks started with `WAMPSession.spawn_task()` while a session ends,
+instead of cancelling them.
 
 ## 1.2.0
 * Fix the default realm never being used. Sessions requesting a realm that
