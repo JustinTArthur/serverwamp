@@ -119,7 +119,7 @@ class WAMPSession:
         return sub_id
 
     async def unregister_subscription(self, sub_id: int):
-        topic_uri = self._subscriptions_ids.pop(sub_id)
+        topic_uri = self._subscriptions_ids.pop(sub_id, None)
         if not topic_uri:
             raise NoSuchSubscription()
         del self._subscriptions[topic_uri]

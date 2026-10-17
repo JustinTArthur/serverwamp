@@ -503,7 +503,8 @@ class Application:
         session: WAMPSession
     ):
         subscribe_unsubscribe_iter = self._subscription_exits[session].pop(
-            request.subscription
+            request.subscription,
+            None
         )
         if subscribe_unsubscribe_iter:
             try:

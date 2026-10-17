@@ -6,6 +6,8 @@
     session is established abort the session with a protocol error.
     Message types must be integers, so `1.0` and `true` are no longer accepted
     as HELLO.
+  * UNSUBSCRIBE for a subscription the session doesn't have is answered with
+    `wamp.error.no_such_subscription`.
 * Fix GOODBYE details and reason being read from the wrong fields.
 `WAMPGoodbyeRequest` no longer has a `request_id`.
 

@@ -96,3 +96,56 @@ def test_hello_in_session_aborts(synchronize_requests):
         await asyncio.wait_for(handling, TIMEOUT)
 
     run(exercise())
+
+
+def test_unsubscribe_unknown_subscription():
+    topic_events = []
+    topic_routes = serverwamp.TopicRouteSet()
+
+    @topic_routes.route('test.topic')
+    async def subscribe(topic_uri):
+        topic_events.append('subscribed')
+        yield
+        topic_events.append('unsubscribed')
+
+    async def exercise():
+        connection = MemoryConnection()
+        realm = serverwamp.Realm(REALM_URI)
+        realm.add_topic_routes(topic_routes)
+        app = serverwamp.Application(allow_default_realm=False)
+        app.add_realm(realm)
+        handling = asyncio.ensure_future(app.handle_connection(connection))
+        connection.inbound.put_nowait([WAMPMsgType.HELLO, REALM_URI, {}])
+        welcome = await connection.receive()
+        assert welcome[0] == WAMPMsgType.WELCOME
+
+        connection.inbound.put_nowait(
+            [WAMPMsgType.SUBSCRIBE, 1, {}, 'test.topic']
+        )
+        subscribed = await connection.receive()
+        assert subscribed[:2] == (WAMPMsgType.SUBSCRIBED, 1)
+        sub_id = subscribed[2]
+
+        connection.inbound.put_nowait([WAMPMsgType.UNSUBSCRIBE, 2, sub_id])
+        assert await connection.receive() == (WAMPMsgType.UNSUBSCRIBED, 2)
+
+        for request_id, unknown_sub_id in ((3, sub_id), (4, 12345)):
+            connection.inbound.put_nowait(
+                [WAMPMsgType.UNSUBSCRIBE, request_id, unknown_sub_id]
+            )
+            assert await connection.receive() == (
+                WAMPMsgType.ERROR, WAMPMsgType.UNSUBSCRIBE, request_id, {},
+                'wamp.error.no_such_subscription'
+            )
+
+        # The session is still open.
+        connection.inbound.put_nowait(
+            [WAMPMsgType.GOODBYE, {}, 'wamp.close.close_realm']
+        )
+        goodbye = await connection.receive()
+        assert goodbye[0] == WAMPMsgType.GOODBYE
+        await connection.close()
+        await asyncio.wait_for(handling, TIMEOUT)
+
+    run(exercise())
+    assert topic_events == ['subscribed', 'unsubscribed']
