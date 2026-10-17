@@ -53,6 +53,8 @@ directly.
 * Reject aiohttp WebSocket connections that offer none of the supported WAMP
 subprotocols with 400 Bad Request. They were upgraded and then failed in the
 request handler.
+* Fix RPC handlers given to `set_rpc_handler()` failing on every call unless
+their parameter was named `rpc_request`.
 
 ## 1.2.0
 * Fix the default realm never being used. Sessions requesting a realm that

@@ -89,3 +89,16 @@ def test_progressive_handler_final_single_value():
         [WAMPMsgType.CALL_RESULT, 1, {'progress': True}, ['halfway']],
         [WAMPMsgType.CALL_RESULT, 1, {}, ['done']],
     ]
+
+
+def test_custom_rpc_handler_parameter_can_have_any_name():
+    async def handle_call(request):
+        return serverwamp.RPCResult(args=(request.uri,))
+
+    realm = serverwamp.Realm(REALM_URI)
+    realm.set_rpc_handler(handle_call)
+    app = serverwamp.Application(allow_default_realm=False)
+    app.add_realm(realm)
+
+    results = run(call(app))
+    assert results == [[WAMPMsgType.CALL_RESULT, 1, {}, ['procedure']]]

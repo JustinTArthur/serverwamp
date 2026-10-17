@@ -656,7 +656,7 @@ async def default_protocol_rpc_handler(
         receive_progress=request.options.get('receive_progress', False),
         partition_route=partition_route
     )
-    invocation = session.realm.handle_rpc_call(rpc_request=rpc_request)
+    invocation = session.realm.handle_rpc_call(rpc_request)
     if isinstance(invocation, AsyncIterator):
         try:
             yielded_anything = False
