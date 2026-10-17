@@ -201,7 +201,7 @@ async def abort_on_malformed_msgs(msgs, connection):
         async for msg in msgs:
             yield msg
     except WAMPMsgParseError:
-        await connection.abort('wamp.error.protocol_error', 'Parse error.')
+        await connection.abort('wamp.error.protocol_violation', 'Parse error.')
 
 
 @dataclass
@@ -299,7 +299,7 @@ class Application:
             try:
                 request = wamp_request_from_msg(msg)
             except WAMPMsgParseError:
-                await connection.abort('wamp.error.protocol_error',
+                await connection.abort('wamp.error.protocol_violation',
                                        'Parse error.')
                 return
             break
@@ -308,7 +308,7 @@ class Application:
             return
 
         if not isinstance(request, WAMPHelloRequest):
-            await connection.abort('wamp.error.protocol_error',
+            await connection.abort('wamp.error.protocol_violation',
                                    'Unexpected request.')
             return
 
@@ -353,12 +353,12 @@ class Application:
                 try:
                     request = wamp_request_from_msg(msg)
                 except WAMPMsgParseError:
-                    await connection.abort('wamp.error.protocol_error',
+                    await connection.abort('wamp.error.protocol_violation',
                                            'Parse error.')
                     return
                 handler = self._protocol_request_handlers.get(type(request))
                 if handler is None:
-                    await connection.abort('wamp.error.protocol_error',
+                    await connection.abort('wamp.error.protocol_violation',
                                            'Unexpected request.')
                     return
                 await handler(request, session)
@@ -368,14 +368,14 @@ class Application:
             try:
                 request = wamp_request_from_msg(msg)
             except WAMPMsgParseError:
-                await connection.abort('wamp.error.protocol_error',
+                await connection.abort('wamp.error.protocol_violation',
                                        'Parse error.')
                 return
             request_type = type(request)
             handler = self._protocol_request_handlers.get(request_type)
             if handler is None:
                 # Such as a HELLO for a session that's already established.
-                await connection.abort('wamp.error.protocol_error',
+                await connection.abort('wamp.error.protocol_violation',
                                        'Unexpected request.')
                 return
             if request_type in ALWAYS_SYNCHRONIZE:

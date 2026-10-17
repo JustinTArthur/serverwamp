@@ -172,7 +172,7 @@ def test_malformed_message_aborts(ws_protocol, payload, in_session):
         client.send_raw(payload)
         abort = await client.receive()
         assert abort[0] == WAMPMsgType.ABORT
-        assert abort[2] == 'wamp.error.protocol_error'
+        assert abort[2] == 'wamp.error.protocol_violation'
         assert await client._next_event() == {'type': 'websocket.close'}
 
         await asyncio.wait_for(client.handling, TIMEOUT)

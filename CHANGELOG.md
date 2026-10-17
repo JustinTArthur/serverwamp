@@ -1,9 +1,11 @@
 # serverwamp Changelog
 ## Unreleased
+* Abort sessions for protocol errors with `wamp.error.protocol_violation`,
+per WAMP spec, instead of `wamp.error.protocol_error`.
 * Handle these client mistakes instead of failing in the connection handler:
   * WebSocket messages that aren't valid JSON or MessagePack, WAMP messages
     that are too short or have fields of the wrong type, and HELLO after the
-    session is established abort the session with a protocol error.
+    session is established abort the session with a protocol violation.
     Message types must be integers, so `1.0` and `true` are no longer accepted
     as HELLO.
   * UNSUBSCRIBE for a subscription the session doesn't have is answered with

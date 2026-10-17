@@ -72,7 +72,7 @@ def test_malformed_wamp_aborts(msg, in_session, synchronize_requests):
         connection.inbound.put_nowait(msg)
         abort = await connection.receive()
         assert abort[0] == WAMPMsgType.ABORT
-        assert abort[2] == 'wamp.error.protocol_error'
+        assert abort[2] == 'wamp.error.protocol_violation'
         await asyncio.wait_for(handling, TIMEOUT)
 
     run(exercise())
@@ -92,7 +92,7 @@ def test_hello_in_session_aborts(synchronize_requests):
         abort = await connection.receive()
         assert abort[0] == WAMPMsgType.ABORT
         assert abort[1] == {'message': 'Unexpected request.'}
-        assert abort[2] == 'wamp.error.protocol_error'
+        assert abort[2] == 'wamp.error.protocol_violation'
         await asyncio.wait_for(handling, TIMEOUT)
 
     run(exercise())

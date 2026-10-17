@@ -114,7 +114,7 @@ class ASGIWebSocketConection(Connection, metaclass=ABCMeta):
             recvd = await self._asgi_receive()
             if recvd['type'] == 'websocket.receive':
                 if data_type not in recvd:
-                    await self.abort('wamp.error.protocol_error')
+                    await self.abort('wamp.error.protocol_violation')
                     break
                 yield recvd[data_type]
                 continue

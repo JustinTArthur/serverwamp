@@ -140,7 +140,7 @@ def test_malformed_message_aborts(caplog, ws_protocol, payload, in_session):
                 await ws.send_bytes(payload)
             abort = await receive(ws)
             assert abort[0] == WAMPMsgType.ABORT
-            assert abort[2] == 'wamp.error.protocol_error'
+            assert abort[2] == 'wamp.error.protocol_violation'
             closing = await ws.receive()
             assert closing.type in (WSMsgType.CLOSE, WSMsgType.CLOSED)
             await ws.close()
