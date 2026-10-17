@@ -436,3 +436,103 @@ def test_end_session_after_client_left(end_session):
         assert not session.is_open
 
     run(exercise())
+
+
+def build_tracked_app(events, **app_kwargs):
+    topics = serverwamp.TopicRouteSet()
+
+    @topics.route('test.topic')
+    async def subscription():
+        events.append('subscribed')
+        yield
+        events.append('unsubscribed')
+
+    rpc_routes = serverwamp.RPCRouteSet()
+
+    @rpc_routes.route('procedure')
+    async def procedure():
+        return 'called'
+
+    app = build_app(**app_kwargs)
+    app._realms[REALM_URI].add_topic_routes(topics)
+    app._realms[REALM_URI].add_rpc_routes(rpc_routes)
+    return app
+
+
+async def open_subscribed_session(app, connection):
+    connection.inbound.put_nowait([WAMPMsgType.HELLO, REALM_URI, {}])
+    assert (await connection.receive())[0] == WAMPMsgType.WELCOME
+    connection.inbound.put_nowait(
+        [WAMPMsgType.SUBSCRIBE, 1, {}, 'test.topic']
+    )
+    assert (await connection.receive())[0] == WAMPMsgType.SUBSCRIBED
+    session, = app._active_sessions
+    return session
+
+
+async def until(condition):
+    for _ in range(int(TIMEOUT / 0.01)):
+        if condition():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError('Timed out.')
+
+
+@pytest.mark.parametrize('synchronize_requests', (False, True))
+def test_client_goodbye_ends_session(synchronize_requests):
+    events = []
+    app = build_tracked_app(events, synchronize_requests=synchronize_requests)
+
+    async def exercise():
+        connection = MemoryConnection()
+        handling = asyncio.ensure_future(app.handle_connection(connection))
+        session = await open_subscribed_session(app, connection)
+        connection.inbound.put_nowait(
+            [WAMPMsgType.GOODBYE, {}, 'wamp.close.close_realm']
+        )
+        assert await connection.receive() == (
+            WAMPMsgType.GOODBYE, {}, 'wamp.close.goodbye_and_out'
+        )
+        # The session is cleaned up without waiting for the client to leave.
+        await until(lambda: not app._active_sessions)
+        assert events == ['subscribed', 'unsubscribed']
+
+        # Code still holding the session can't send for it.
+        with pytest.raises(serverwamp.ConnectionClosed):
+            await session.send_event('test.topic')
+
+        await connection.close()
+        await asyncio.wait_for(handling, TIMEOUT)
+        assert connection.outbound.empty()
+
+    run(exercise())
+
+
+def test_server_goodbye_ends_session_on_reply():
+    events = []
+    app = build_tracked_app(events)
+
+    async def exercise():
+        connection = MemoryConnection()
+        handling = asyncio.ensure_future(app.handle_connection(connection))
+        await open_subscribed_session(app, connection)
+        await app.close_sessions()
+        goodbye = await connection.receive()
+        assert goodbye[0] == WAMPMsgType.GOODBYE
+
+        # Until the client replies, anything else it sends is ignored.
+        connection.inbound.put_nowait([WAMPMsgType.CALL, 2, {}, 'procedure'])
+        await asyncio.sleep(0.01)
+        assert app._active_sessions
+        connection.inbound.put_nowait(
+            [WAMPMsgType.GOODBYE, {}, 'wamp.close.goodbye_and_out']
+        )
+        await until(lambda: not app._active_sessions)
+        assert events == ['subscribed', 'unsubscribed']
+
+        await connection.close()
+        await asyncio.wait_for(handling, TIMEOUT)
+        # The client's reply isn't replied to, and the call wasn't answered.
+        assert connection.outbound.empty()
+
+    run(exercise())

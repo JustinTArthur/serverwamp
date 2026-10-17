@@ -67,6 +67,7 @@ class WAMPSession:
 
         self._custom_state: dict[str, Any] = {}
         self._said_goodbye = False
+        self._ended = False
         self._subscriptions: dict[str, int] = {}
         self._subscriptions_ids: dict[int, str] = {}
         self._tasks = tasks
@@ -103,8 +104,15 @@ class WAMPSession:
             logger.exception('Unhandled exception from %s in session %s.',
                              getattr(fn, '__qualname__', fn), self.id)
 
-    async def send_raw(self, msg: Iterable):
+    async def _send_msg(self, msg):
+        if self._ended:
+            # Keeps code still holding the session, like a call handler or a
+            # publisher, from sending to a later session on the connection.
+            raise ConnectionClosed(f'Session {self.id} has ended.')
         await self.connection.send_msg(msg)
+
+    async def send_raw(self, msg: Iterable):
+        await self._send_msg(msg)
 
     async def send_event(self, topic, args=(), kwargs=None, trust_level=None):
         if topic not in self._subscriptions:
@@ -120,10 +128,10 @@ class WAMPSession:
             kwargs=kwargs,
             trust_level=trust_level
         )
-        await self.connection.send_msg(msg)
+        await self._send_msg(msg)
 
     async def request_ticket_authentication(self):
-        await self.connection.send_msg(ticket_challenge_msg())
+        await self._send_msg(ticket_challenge_msg())
 
     async def request_cra_auth(self, auth_role: str, auth_provider: str):
         challenge_string = cra_challenge_string(
@@ -133,7 +141,7 @@ class WAMPSession:
             auth_role=auth_provider,
             nonce=scram_nonce()
         )
-        await self.connection.send_msg(cra_challenge_msg(challenge_string))
+        await self._send_msg(cra_challenge_msg(challenge_string))
 
     async def register_subscription(self, topic_uri: str) -> int:
         sub_id = self.subscription_id_for_topic(topic_uri)
@@ -148,12 +156,12 @@ class WAMPSession:
         del self._subscriptions[topic_uri]
 
     async def mark_subscribed(self, request, subscription_id: int):
-        await self.connection.send_msg(
+        await self._send_msg(
             subscribed_response_msg(request, subscription_id)
         )
 
     async def mark_unsubscribed(self, request):
-        await self.connection.send_msg(
+        await self._send_msg(
             unsubscribed_response_msg(request)
         )
 
@@ -164,11 +172,13 @@ class WAMPSession:
     async def mark_authenticated(self, identity: Any = None):
         if not self._authenticated:
             self._authenticated = True
-            await self.connection.send_msg(welcome_msg(self.id))
+            await self._send_msg(welcome_msg(self.id))
             self.is_open = True
         self.identity = identity
 
     async def abort(self, uri=None, message=None):
+        if self._ended:
+            return
         try:
             await self.connection.send_msg(abort_msg(uri, message))
         except ConnectionClosed:
@@ -185,6 +195,7 @@ class WAMPSession:
                 # The client is already gone, so there's no one to tell.
                 pass
         self.is_open = False
+        self._ended = True
 
 
 class NoSuchSubscription(Exception):

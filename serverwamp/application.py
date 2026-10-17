@@ -36,7 +36,7 @@ from serverwamp.routing import NoSuchRouteError
 from serverwamp.rpc import RPCErrorResult, RPCHandler, RPCProgressReport, RPCRequest, RPCRouter
 from serverwamp.session import NoSuchSubscription, WAMPSession
 
-ALWAYS_SYNCHRONIZE = frozenset((WAMPSubscribeRequest, WAMPUnsubscribeRequest))
+ALWAYS_SYNCHRONIZE = frozenset((WAMPGoodbyeRequest, WAMPSubscribeRequest, WAMPUnsubscribeRequest))
 EMPTY_SET: frozenset[Any] = frozenset()
 
 logger = logging.getLogger(__name__)
@@ -372,22 +372,6 @@ class Application:
         # protocol itself; messages expecting responses have identifiers for
         # referring back to them. Ordering may still be important to the app,
         # however.
-        if self._synchronize_requests:
-            async for msg in msgs:
-                try:
-                    request = wamp_request_from_msg(msg)
-                except WAMPMsgParseError:
-                    await connection.abort('wamp.error.protocol_violation',
-                                           'Parse error.')
-                    return
-                handler = self._protocol_request_handlers.get(type(request))
-                if handler is None:
-                    await connection.abort('wamp.error.protocol_violation',
-                                           'Unexpected request.')
-                    return
-                await handler(request, session)
-            return
-
         async for msg in msgs:
             try:
                 request = wamp_request_from_msg(msg)
@@ -402,10 +386,18 @@ class Application:
                 await connection.abort('wamp.error.protocol_violation',
                                        'Unexpected request.')
                 return
-            if request_type in ALWAYS_SYNCHRONIZE:
+            if not session.is_open and request_type is not WAMPGoodbyeRequest:
+                # The session was closed, so per the spec, anything but the
+                # client's GOODBYE in reply is ignored.
+                continue
+            if (self._synchronize_requests
+                    or request_type in ALWAYS_SYNCHRONIZE):
                 await handler(request, session)
             else:
                 await session.spawn_task(handler, request, session)
+            if request_type is WAMPGoodbyeRequest and not session.is_open:
+                # GOODBYE has been said both ways, which ends the session.
+                return
 
     async def _clean_up_session(self, session):
         self._active_sessions.discard(session)

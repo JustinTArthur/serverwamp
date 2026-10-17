@@ -28,6 +28,13 @@ per WAMP spec, instead of `wamp.error.protocol_error`.
 * Give GOODBYE messages a reason instead of none. Replies to a client's GOODBYE
 and `WAMPSession.close()` without a reason use `wamp.close.goodbye_and_out`,
 and `Application.close_sessions()` uses `wamp.close.system_shutdown`.
+* End sessions once GOODBYE has been exchanged, instead of when the client
+disconnects. Subscription and session state teardown run then, and the
+connection handler returns.
+  * After the session sends GOODBYE, messages from the client other than its
+    GOODBYE in reply are ignored, per WAMP spec.
+  * Sending for a session that has ended raises `serverwamp.ConnectionClosed`,
+    including from call handlers still running and from `send_event()`.
 * Fix prefix and regex routes handling URIs they don't match. A call or
 subscription for a URI without an exact route went to the first prefix or regex
 route added.
