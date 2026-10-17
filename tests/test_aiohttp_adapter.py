@@ -217,3 +217,44 @@ def test_session_call_and_goodbye(caplog, ws_protocol):
         run(exercise())
 
     assert_no_aiohttp_errors(caplog)
+
+
+class ClosingWebSocket:
+    """Stands in for a WebSocketResponse whose transport is closing."""
+    async def _closing_send(self, data, compress=None):
+        raise ConnectionResetError('Cannot write to closing transport')
+
+    send_json = send_str = send_bytes = _closing_send
+
+    async def close(self):
+        pass
+
+
+@pytest.mark.parametrize('ws_protocol', (
+    'wamp.2.json',
+    'wamp.2.json.batched',
+    'wamp.2.msgpack',
+    'wamp.2.msgpack.batched',
+))
+def test_send_to_closing_websocket_raises_connection_closed(ws_protocol):
+    from types import SimpleNamespace
+
+    from serverwamp.adapters.aiohttp import ws_protocol_connection_classes
+
+    request = SimpleNamespace(cookies={}, raw_headers=(), path='/',
+                              raw_path='/', query_string='', remote=None,
+                              transport=None)
+    connection = ws_protocol_connection_classes[ws_protocol](
+        ClosingWebSocket(),
+        request
+    )
+
+    async def exercise():
+        with pytest.raises(serverwamp.ConnectionClosed):
+            await connection.send_msg([WAMPMsgType.GOODBYE, {}, 'x'])
+        with pytest.raises(serverwamp.ConnectionClosed):
+            await connection.send_msgs([[WAMPMsgType.GOODBYE, {}, 'x']])
+        # Nobody's left to tell, so aborting doesn't fail.
+        await connection.abort('wamp.error.protocol_violation')
+
+    run(exercise())

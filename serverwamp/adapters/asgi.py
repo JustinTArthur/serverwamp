@@ -4,7 +4,7 @@ from typing import AsyncIterator, Awaitable, Callable, Mapping, Union
 
 import msgpack
 
-from serverwamp.connection import Connection
+from serverwamp.connection import Connection, ConnectionClosed
 from serverwamp.helpers import (object_from_msgpack,
                                 objects_from_msgpack_batch, pack_uint32_be)
 from serverwamp.json import JSON_BATCH_SPLITTER
@@ -122,7 +122,11 @@ class ASGIWebSocketConection(Connection, metaclass=ABCMeta):
                 break
 
     async def close(self):
-        await self._asgi_send({'type': 'websocket.close'})
+        try:
+            await self._asgi_send({'type': 'websocket.close'})
+        except OSError:
+            # The client already disconnected.
+            pass
 
 
 class ASGIJSONWebSocketConnection(ASGIWebSocketConection):
@@ -131,10 +135,15 @@ class ASGIJSONWebSocketConnection(ASGIWebSocketConection):
             yield deserialize_json(ws_msg)
 
     async def send_msg(self, msg):
-        await self._asgi_send({
-            'type': 'websocket.send',
-            'text': serialize_json(msg)
-        })
+        try:
+            await self._asgi_send({
+                'type': 'websocket.send',
+                'text': serialize_json(msg)
+            })
+        except OSError:
+            # Per the ASGI spec, servers raise an OSError subclass for sends
+            # after the client disconnected.
+            raise ConnectionClosed() from None
 
 
 class ASGIBatchedJSONWebSocketConnection(ASGIWebSocketConection):
@@ -144,18 +153,24 @@ class ASGIBatchedJSONWebSocketConnection(ASGIWebSocketConection):
                 yield msg
 
     async def send_msg(self, msg):
-        await self._asgi_send({
-            'type': 'websocket.send',
-            'text': serialize_json(msg) + JSON_BATCH_SPLITTER
-        })
+        try:
+            await self._asgi_send({
+                'type': 'websocket.send',
+                'text': serialize_json(msg) + JSON_BATCH_SPLITTER
+            })
+        except OSError:
+            raise ConnectionClosed() from None
 
     async def send_msgs(self, msgs):
-        await self._asgi_send({
-            'type': 'websocket.send',
-            'text': JSON_BATCH_SPLITTER.join(
-                    [serialize_json(msg) for msg in msgs]
-                ) + JSON_BATCH_SPLITTER
-        })
+        try:
+            await self._asgi_send({
+                'type': 'websocket.send',
+                'text': JSON_BATCH_SPLITTER.join(
+                        [serialize_json(msg) for msg in msgs]
+                    ) + JSON_BATCH_SPLITTER
+            })
+        except OSError:
+            raise ConnectionClosed() from None
 
 
 class ASGIMsgPackWebSocketConnection(ASGIWebSocketConection):
@@ -165,10 +180,13 @@ class ASGIMsgPackWebSocketConnection(ASGIWebSocketConection):
 
     async def send_msg(self, msg):
         msg_bytes = msgpack.packb(msg)
-        await self._asgi_send({
-            'type': 'websocket.send',
-            'bytes': msg_bytes
-        })
+        try:
+            await self._asgi_send({
+                'type': 'websocket.send',
+                'bytes': msg_bytes
+            })
+        except OSError:
+            raise ConnectionClosed() from None
 
 
 class ASGIBatchedMsgPackWebSocketConnection(ASGIWebSocketConection):
@@ -180,10 +198,13 @@ class ASGIBatchedMsgPackWebSocketConnection(ASGIWebSocketConection):
     async def send_msg(self, msg):
         msg_bytes = msgpack.packb(msg)
         msg_len_bytes = pack_uint32_be(len(msg_bytes))
-        await self._asgi_send({
-            'type': 'websocket.send',
-            'bytes': msg_len_bytes + msg_bytes
-        })
+        try:
+            await self._asgi_send({
+                'type': 'websocket.send',
+                'bytes': msg_len_bytes + msg_bytes
+            })
+        except OSError:
+            raise ConnectionClosed() from None
 
     async def send_msgs(self, msgs):
         batch_bytes = bytearray()
@@ -192,10 +213,13 @@ class ASGIBatchedMsgPackWebSocketConnection(ASGIWebSocketConection):
             msg_len_bytes = pack_uint32_be(len(msg_bytes))
             batch_bytes += msg_len_bytes
             batch_bytes += msg_bytes
-        await self._asgi_send({
-            'type': 'websocket.send',
-            'bytes': batch_bytes
-        })
+        try:
+            await self._asgi_send({
+                'type': 'websocket.send',
+                'bytes': batch_bytes
+            })
+        except OSError:
+            raise ConnectionClosed() from None
 
 
 ws_protocol_connection_classes = {

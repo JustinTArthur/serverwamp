@@ -6,7 +6,7 @@ import aiohttp
 import msgpack
 from aiohttp import WSMsgType, web
 
-from serverwamp.connection import Connection
+from serverwamp.connection import Connection, ConnectionClosed
 from serverwamp.helpers import (object_from_msgpack,
                                 objects_from_msgpack_batch, pack_uint32_be)
 from serverwamp.json import JSON_BATCH_SPLITTER
@@ -76,10 +76,11 @@ class AiohttpJSONWebSocketConnection(AiohttpWebSocketConnection):
                 yield deserialize_json(ws_msg.data)
 
     async def send_msg(self, msg):
-        await self._ws.send_json(
-            msg,
-            compress=self._compress_outbound
-        )
+        try:
+            await self._ws.send_json(msg, compress=self._compress_outbound)
+        except ConnectionResetError:
+            # aiohttp raises this when writing to a closing transport.
+            raise ConnectionClosed() from None
 
 
 class AiohttpBatchedJSONWebSocketConnection(AiohttpWebSocketConnection):
@@ -90,18 +91,24 @@ class AiohttpBatchedJSONWebSocketConnection(AiohttpWebSocketConnection):
                     yield msg
 
     async def send_msg(self, msg):
-        await self._ws.send_str(
-            serialize_json(msg) + JSON_BATCH_SPLITTER,
-            compress=self._compress_outbound
-        )
+        try:
+            await self._ws.send_str(
+                serialize_json(msg) + JSON_BATCH_SPLITTER,
+                compress=self._compress_outbound
+            )
+        except ConnectionResetError:
+            raise ConnectionClosed() from None
 
     async def send_msgs(self, msgs):
-        await self._ws.send_str(
-            JSON_BATCH_SPLITTER.join(
-                [serialize_json(msg) for msg in msgs]
-            ) + JSON_BATCH_SPLITTER,
-            compress=self._compress_outbound
-        )
+        try:
+            await self._ws.send_str(
+                JSON_BATCH_SPLITTER.join(
+                    [serialize_json(msg) for msg in msgs]
+                ) + JSON_BATCH_SPLITTER,
+                compress=self._compress_outbound
+            )
+        except ConnectionResetError:
+            raise ConnectionClosed() from None
 
 
 class AiohttpMsgPackWebSocketConnection(AiohttpWebSocketConnection):
@@ -112,10 +119,13 @@ class AiohttpMsgPackWebSocketConnection(AiohttpWebSocketConnection):
 
     async def send_msg(self, msg):
         msg_bytes = msgpack.packb(msg)
-        await self._ws.send_bytes(
-            msg_bytes,
-            compress=self._compress_outbound
-        )
+        try:
+            await self._ws.send_bytes(
+                msg_bytes,
+                compress=self._compress_outbound
+            )
+        except ConnectionResetError:
+            raise ConnectionClosed() from None
 
 
 class AiohttpBatchedMsgPackWebSocketConnection(AiohttpWebSocketConnection):
@@ -130,10 +140,13 @@ class AiohttpBatchedMsgPackWebSocketConnection(AiohttpWebSocketConnection):
     async def send_msg(self, msg):
         msg_bytes = msgpack.packb(msg)
         msg_len_bytes = pack_uint32_be(len(msg_bytes))
-        await self._ws.send_bytes(
-            msg_len_bytes + msg_bytes,
-            compress=self._compress_outbound
-        )
+        try:
+            await self._ws.send_bytes(
+                msg_len_bytes + msg_bytes,
+                compress=self._compress_outbound
+            )
+        except ConnectionResetError:
+            raise ConnectionClosed() from None
 
     async def send_msgs(self, msgs):
         batch_bytes = bytearray()
@@ -142,10 +155,13 @@ class AiohttpBatchedMsgPackWebSocketConnection(AiohttpWebSocketConnection):
             msg_len_bytes = pack_uint32_be(len(msg_bytes))
             batch_bytes += msg_len_bytes
             batch_bytes += msg_bytes
-        await self._ws.send_bytes(
-            batch_bytes,
-            compress=self._compress_outbound
-        )
+        try:
+            await self._ws.send_bytes(
+                batch_bytes,
+                compress=self._compress_outbound
+            )
+        except ConnectionResetError:
+            raise ConnectionClosed() from None
 
 
 ws_protocol_connection_classes = {

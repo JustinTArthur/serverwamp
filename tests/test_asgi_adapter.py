@@ -230,3 +230,32 @@ def test_messages_batched_with_hello(ws_protocol):
         await client.disconnect()
 
     run(exercise())
+
+
+@pytest.mark.parametrize('ws_protocol', WS_PROTOCOLS)
+def test_send_after_disconnect_raises_connection_closed(ws_protocol):
+    from serverwamp.adapters.asgi import ws_protocol_connection_classes
+
+    async def disconnected_send(event):
+        # ASGI servers raise an OSError subclass for sends after disconnect.
+        raise OSError('Client disconnected.')
+
+    async def receive():
+        return {'type': 'websocket.disconnect'}
+
+    connection = ws_protocol_connection_classes[ws_protocol](
+        {'headers': []},
+        receive,
+        disconnected_send,
+        {}
+    )
+
+    async def exercise():
+        with pytest.raises(serverwamp.ConnectionClosed):
+            await connection.send_msg([WAMPMsgType.GOODBYE, {}, 'x'])
+        with pytest.raises(serverwamp.ConnectionClosed):
+            await connection.send_msgs([[WAMPMsgType.GOODBYE, {}, 'x']])
+        # Nobody's left to tell, so aborting doesn't fail.
+        await connection.abort('wamp.error.protocol_violation')
+
+    run(exercise())

@@ -4,6 +4,12 @@ from typing import Iterable, Sequence
 from serverwamp.protocol import abort_msg
 
 
+class ConnectionClosed(ConnectionError):
+    """Raised by a Connection when a message can't be sent because the
+    underlying transport has closed, such as when the client disconnected.
+    """
+
+
 class Connection(ABC):
     """Manages a connection with a client that might support the WAMP protocol.
     Provides the application layer with messages from the underlying
@@ -23,12 +29,14 @@ class Connection(ABC):
 
     @abstractmethod
     async def send_msg(self, msg: Sequence):
-        pass
+        """Send a message to the underlying transport. Raises ConnectionClosed
+        if the transport has closed.
+        """
 
     async def send_msgs(self, msgs: Iterable[Sequence]):
         """Send multiple messages to the underlying transport. For some
         transports, this might be overridden to take advantage of batching
-        opportunities.
+        opportunities. Raises ConnectionClosed if the transport has closed.
         """
         for msg in msgs:
             await self.send_msg(msg)
@@ -40,5 +48,8 @@ class Connection(ABC):
     async def abort(self, reason_uri: str = "no_reason", msg: str = None):
         try:
             await self.send_msg(abort_msg(reason_uri, msg))
+        except ConnectionClosed:
+            # The client is already gone, so there's no one to tell.
+            pass
         finally:
             await self.close()
