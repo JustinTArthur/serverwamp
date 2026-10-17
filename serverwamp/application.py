@@ -323,7 +323,7 @@ class Application:
                 realm,
                 tasks=session_tasks,
                 auth_id=request.details.get('authid', None),
-                auth_methods=request.details.get('authmethods', ())
+                auth_methods=request.details.get('authmethods') or ()
             )
             try:
                 await self.handle_session(session, msgs)

@@ -228,3 +228,31 @@ def test_subscribe_to_unrouted_topic_errors():
         await asyncio.wait_for(handling, TIMEOUT)
 
     run(exercise())
+
+
+@pytest.mark.parametrize('hello_details', (
+    {},
+    {'authmethods': None},
+    {'authmethods': ['ticket']},
+))
+def test_failed_transport_authentication_aborts(hello_details):
+    async def reject(session):
+        return None
+
+    async def exercise():
+        connection = MemoryConnection()
+        realm = serverwamp.Realm(REALM_URI)
+        realm.add_transport_authenticator(reject)
+        app = serverwamp.Application(allow_default_realm=False)
+        app.add_realm(realm)
+        handling = asyncio.ensure_future(app.handle_connection(connection))
+        connection.inbound.put_nowait(
+            [WAMPMsgType.HELLO, REALM_URI, hello_details]
+        )
+        abort = await connection.receive()
+        assert abort[0] == WAMPMsgType.ABORT
+        assert abort[2] == 'wamp.error.authentication_failed'
+        await connection.close()
+        await asyncio.wait_for(handling, TIMEOUT)
+
+    run(exercise())

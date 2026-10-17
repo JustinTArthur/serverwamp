@@ -12,6 +12,8 @@ per WAMP spec, instead of `wamp.error.protocol_error`.
     `wamp.error.no_such_subscription`.
   * SUBSCRIBE for a topic without a route is answered with
     `wamp.error.invalid_uri`.
+  * HELLO with a null `authmethods` that no transport authenticator identifies
+    is aborted with `wamp.error.authentication_failed`.
 * Fix GOODBYE details and reason being read from the wrong fields.
 `WAMPGoodbyeRequest` no longer has a `request_id`.
 * Fix prefix and regex routes handling URIs they don't match. A call or
