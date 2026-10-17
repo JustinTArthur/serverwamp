@@ -234,4 +234,4 @@ def _yielded_value_to_result(yielded_value):
     if isinstance(yielded_value, Sequence):
         return RPCResult(args=yielded_value)
     else:
-        raise Exception("Uninterpretable response from RPC handler.")
+        raise Exception('Uninterpretable response from RPC handler.')

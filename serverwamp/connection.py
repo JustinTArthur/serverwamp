@@ -47,7 +47,7 @@ class Connection(ABC):
 
     async def abort(
         self,
-        reason_uri: str = "no_reason",
+        reason_uri: str = 'no_reason',
         msg: str | None = None
     ):
         try:

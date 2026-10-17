@@ -365,11 +365,11 @@ def test_disconnect_with_rpcs_in_flight(caplog, handler_cancellation):
             if handler_cancellation:
                 # Cancelling the handler cancels the session's calls.
                 await wait_until(lambda: len(slow_calls) == 2,
-                                 'Calls weren\'t cancelled.')
+                                 "Calls weren't cancelled.")
             else:
                 await wait_for_handler(handler_results)
             await wait_until(lambda: not client.wamp_app._active_sessions,
-                             'Session wasn\'t cleaned up.')
+                             "Session wasn't cleaned up.")
         finally:
             await client.close()
 

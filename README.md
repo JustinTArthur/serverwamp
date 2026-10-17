@@ -78,3 +78,8 @@ Unit tests can be run with:
 
     pip install -e . --group ci
     pytest
+
+Linting and type checking can be run with:
+
+    ruff check serverwamp tests examples
+    mypy serverwamp

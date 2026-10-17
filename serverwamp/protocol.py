@@ -5,7 +5,7 @@ from base64 import b64encode
 from collections.abc import (Callable, Iterable, Mapping, MutableMapping,
                              Sequence)
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import IntEnum, unique
 from random import randint
 from typing import Any, Self
@@ -369,7 +369,7 @@ def cra_challenge_string(
     """Returns a string used in a WAMP CRA challenge using a mix of identifying
     and random data."""
     if auth_time is None:
-        auth_time = datetime.now(timezone.utc)
+        auth_time = datetime.now(UTC)
     challenge_string = json.dumps(
         {
             'authid': auth_id,

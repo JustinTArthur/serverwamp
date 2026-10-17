@@ -57,8 +57,19 @@ ci = [
     "msgpack-types>=0.8.0",
     "mypy>=0.770",
     "pytest>=8.0",
+    "ruff>=0.17.1,<0.18",
     "trio>=0.25.0",
 ]
+
+[tool.ruff]
+line-length = 99
+
+[tool.ruff.lint]
+# Ruff's default rules, as of 0.17, are far broader than these.
+select = ["E4", "E7", "E9", "F", "E501", "Q", "UP"]
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
 
 [tool.hatch.build.targets.sdist]
 include = [
