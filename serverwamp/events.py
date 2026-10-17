@@ -1,5 +1,4 @@
-from collections.abc import (AsyncIterator, Awaitable, Callable, Mapping,
-                             Sequence)
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from re import Pattern
 from typing import Any

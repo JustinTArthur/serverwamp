@@ -5,8 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from serverwamp import rpc
-from serverwamp.protocol import (WAMPRPCErrorResponse, WAMPRPCRequest,
-                                 WAMPRPCResponse, WAMPSession)
+from serverwamp.protocol import WAMPRPCErrorResponse, WAMPRPCRequest, WAMPRPCResponse, WAMPSession
 
 
 def test_route_table():

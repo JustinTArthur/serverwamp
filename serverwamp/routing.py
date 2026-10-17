@@ -1,6 +1,5 @@
 import re
-from collections.abc import (Awaitable, Callable, MutableMapping,
-                             MutableSequence)
+from collections.abc import Awaitable, Callable, MutableMapping, MutableSequence
 from re import Pattern
 from typing import Any
 

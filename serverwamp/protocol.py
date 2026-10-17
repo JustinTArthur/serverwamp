@@ -2,8 +2,7 @@ import json
 import logging
 import secrets
 from base64 import b64encode
-from collections.abc import (Callable, Iterable, Mapping, MutableMapping,
-                             Sequence)
+from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import IntEnum, unique

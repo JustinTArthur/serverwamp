@@ -1,10 +1,15 @@
 import pytest
 
-from serverwamp.protocol import (WAMPGoodbyeRequest, WAMPHelloRequest,
-                                 WAMPMsgParseError, WAMPMsgType,
-                                 WAMPRPCRequest, WAMPSubscribeRequest,
-                                 WAMPUnsubscribeRequest,
-                                 wamp_request_from_msg)
+from serverwamp.protocol import (
+    WAMPGoodbyeRequest,
+    WAMPHelloRequest,
+    WAMPMsgParseError,
+    WAMPMsgType,
+    WAMPRPCRequest,
+    WAMPSubscribeRequest,
+    WAMPUnsubscribeRequest,
+    wamp_request_from_msg,
+)
 
 
 def test_goodbye_fields():

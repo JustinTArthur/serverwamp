@@ -5,11 +5,19 @@ from typing import Any
 
 from serverwamp.adapters.async_base import AsyncTaskGroup
 from serverwamp.connection import ConnectionClosed
-from serverwamp.protocol import (abort_msg, cra_challenge_msg,
-                                 cra_challenge_string, event_msg,
-                                 generate_global_id, goodbye_msg, scram_nonce,
-                                 subscribed_response_msg, ticket_challenge_msg,
-                                 unsubscribed_response_msg, welcome_msg)
+from serverwamp.protocol import (
+    abort_msg,
+    cra_challenge_msg,
+    cra_challenge_string,
+    event_msg,
+    generate_global_id,
+    goodbye_msg,
+    scram_nonce,
+    subscribed_response_msg,
+    ticket_challenge_msg,
+    unsubscribed_response_msg,
+    welcome_msg,
+)
 
 NO_MORE_EVENTS = object()
 NO_IDENTITY = object()

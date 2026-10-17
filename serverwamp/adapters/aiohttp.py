@@ -7,11 +7,9 @@ import msgpack
 from aiohttp import WSMsgType, web
 
 from serverwamp.connection import Connection, ConnectionClosed
-from serverwamp.helpers import (object_from_msgpack,
-                                objects_from_msgpack_batch, pack_uint32_be)
-from serverwamp.json import JSON_BATCH_SPLITTER
+from serverwamp.helpers import object_from_msgpack, objects_from_msgpack_batch, pack_uint32_be
+from serverwamp.json import JSON_BATCH_SPLITTER, objects_from_json_batch
 from serverwamp.json import deserialize_msg as deserialize_json
-from serverwamp.json import objects_from_json_batch
 from serverwamp.json import serialize as serialize_json
 
 SUPPORTED_WS_PROTOCOLS = (

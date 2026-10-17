@@ -1,9 +1,16 @@
 import inspect
 import logging
 from collections import defaultdict
-from collections.abc import (AsyncIterator, Awaitable, Callable, Collection,
-                             Mapping, MutableMapping, MutableSequence,
-                             MutableSet)
+from collections.abc import (
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Collection,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    MutableSet,
+)
 from dataclasses import dataclass
 from hashlib import sha256
 from hmac import new as new_hmac
@@ -12,18 +19,21 @@ from typing import Any
 from serverwamp.adapters.async_base import AsyncSupport
 from serverwamp.connection import ConnectionClosed
 from serverwamp.events import SubscriptionHandler, TopicsRouter
-from serverwamp.protocol import (WAMPGoodbyeRequest, WAMPHelloRequest,
-                                 WAMPMsgParseError, WAMPRPCRequest,
-                                 WAMPSubscribeRequest,
-                                 WAMPUnsubscribeRequest,
-                                 call_error_response_msg,
-                                 call_result_response_msg,
-                                 subscribe_error_response_msg,
-                                 unsubscribe_error_response_msg,
-                                 wamp_request_from_msg)
+from serverwamp.protocol import (
+    WAMPGoodbyeRequest,
+    WAMPHelloRequest,
+    WAMPMsgParseError,
+    WAMPRPCRequest,
+    WAMPSubscribeRequest,
+    WAMPUnsubscribeRequest,
+    call_error_response_msg,
+    call_result_response_msg,
+    subscribe_error_response_msg,
+    unsubscribe_error_response_msg,
+    wamp_request_from_msg,
+)
 from serverwamp.routing import NoSuchRouteError
-from serverwamp.rpc import (RPCErrorResult, RPCHandler, RPCProgressReport,
-                            RPCRequest, RPCRouter)
+from serverwamp.rpc import RPCErrorResult, RPCHandler, RPCProgressReport, RPCRequest, RPCRouter
 from serverwamp.session import NoSuchSubscription, WAMPSession
 
 ALWAYS_SYNCHRONIZE = frozenset((WAMPSubscribeRequest, WAMPUnsubscribeRequest))
@@ -571,9 +581,11 @@ class Application:
         self,
         paths: Collection[str] | None = None
     ):
-        from serverwamp.adapters.asgi import (connection_for_asgi_invocation,
-                                              handle_asgi_lifespan,
-                                              handle_asgi_path_not_found)
+        from serverwamp.adapters.asgi import (
+            connection_for_asgi_invocation,
+            handle_asgi_lifespan,
+            handle_asgi_path_not_found,
+        )
         """Returns an ASGI application callable that serves WAMP on the given
         paths. Other paths will return a 404. If paths is omitted, any path
         requested by the user agent will serve WAMP sessions.
@@ -599,9 +611,11 @@ class Application:
         self,
         paths: Collection[str] | None = None
     ):
-        from serverwamp.adapters.asgi import (connection_for_asgi_invocation,
-                                              handle_asgi_lifespan,
-                                              handle_asgi_path_not_found)
+        from serverwamp.adapters.asgi import (
+            connection_for_asgi_invocation,
+            handle_asgi_lifespan,
+            handle_asgi_path_not_found,
+        )
 
         def application_callable(
             scope: Mapping

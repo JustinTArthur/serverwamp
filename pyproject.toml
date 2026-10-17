@@ -66,10 +66,14 @@ line-length = 99
 
 [tool.ruff.lint]
 # Ruff's default rules, as of 0.17, are far broader than these.
-select = ["E4", "E7", "E9", "F", "E501", "Q", "UP"]
+select = ["E4", "E7", "E9", "F", "E501", "I", "Q", "UP"]
 
 [tool.ruff.lint.flake8-quotes]
 inline-quotes = "single"
+
+[tool.ruff.lint.isort]
+# Helper modules the tests import from their own directory.
+known-local-folder = ["memory_connection", "stream_connection"]
 
 [tool.hatch.build.targets.sdist]
 include = [
