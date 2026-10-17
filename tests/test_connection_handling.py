@@ -536,3 +536,32 @@ def test_server_goodbye_ends_session_on_reply():
         assert connection.outbound.empty()
 
     run(exercise())
+
+
+@pytest.mark.parametrize('synchronize_requests', (False, True))
+def test_new_session_after_goodbye(synchronize_requests):
+    events = []
+    app = build_tracked_app(events, synchronize_requests=synchronize_requests)
+
+    async def exercise():
+        connection = MemoryConnection()
+        handling = asyncio.ensure_future(app.handle_connection(connection))
+        first_session = await open_subscribed_session(app, connection)
+        connection.inbound.put_nowait(
+            [WAMPMsgType.GOODBYE, {}, 'wamp.close.close_realm']
+        )
+        assert (await connection.receive())[0] == WAMPMsgType.GOODBYE
+
+        second_session = await open_subscribed_session(app, connection)
+        assert second_session is not first_session
+        assert events == ['subscribed', 'unsubscribed', 'subscribed']
+        connection.inbound.put_nowait([WAMPMsgType.CALL, 2, {}, 'procedure'])
+        assert await connection.receive() == (
+            WAMPMsgType.CALL_RESULT, 2, {}, ('called',)
+        )
+
+        await connection.close()
+        await asyncio.wait_for(handling, TIMEOUT)
+        assert not app._active_sessions
+
+    run(exercise())

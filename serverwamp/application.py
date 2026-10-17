@@ -272,7 +272,11 @@ class Application:
         self,
         session: WAMPSession,
         msgs: AsyncIterator | None = None
-    ):
+    ) -> bool:
+        """Runs an established session until it ends, returning whether it
+        ended with GOODBYE, after which the client may start another session
+        on the same connection.
+        """
         self._active_sessions.add(session)
         connection = session.connection
         realm: Realm = session.realm
@@ -285,7 +289,7 @@ class Application:
 
         await realm.authenticate_session(session)
         if not session.is_open:
-            return
+            return False
 
         if realm.authed_session_state_handlers:
             await self._start_session_state_handlers(
@@ -296,7 +300,7 @@ class Application:
         if msgs is None:
             msgs = abort_on_malformed_msgs(connection.iterate_msgs(),
                                            connection)
-        await self._process_protocol_msgs(msgs, connection, session)
+        return await self._process_protocol_msgs(msgs, connection, session)
 
     async def handle_connection(self, connection):
         # A single iterator serves the whole connection so that messages the
@@ -312,6 +316,15 @@ class Application:
                 await aclose()
 
     async def _handle_connection_msgs(self, connection, msgs):
+        # The spec lets a client open another session after GOODBYE, so the
+        # connection can carry one session after another.
+        while await self._handle_session_msgs(connection, msgs):
+            pass
+
+    async def _handle_session_msgs(self, connection, msgs) -> bool:
+        """Runs a session once the client says hello, returning whether it
+        ended with GOODBYE and so the client may say hello again.
+        """
         # They say hello or we show them the door.  TODO: timeout?
         async for msg in msgs:
             try:
@@ -319,21 +332,21 @@ class Application:
             except WAMPMsgParseError:
                 await connection.abort('wamp.error.protocol_violation',
                                        'Parse error.')
-                return
+                return False
             break
         else:
             # Connection closed instead of saying hello.
-            return
+            return False
 
         if not isinstance(request, WAMPHelloRequest):
             await connection.abort('wamp.error.protocol_violation',
                                    'Unexpected request.')
-            return
+            return False
 
         realm = self._realms.get(request.realm_uri, self._default_realm)
         if realm is None:
             await connection.abort('wamp.error.no_such_realm')
-            return
+            return False
 
         async with self._async_support.launch_task_group() as session_tasks:
             session = WAMPSession(
@@ -344,17 +357,19 @@ class Application:
                 auth_methods=request.details.get('authmethods') or ()
             )
             try:
-                await self.handle_session(session, msgs)
+                ended_with_goodbye = await self.handle_session(session, msgs)
             except ConnectionClosed:
                 # A reply to a request handled outside a session task, such
                 # as with synchronize_requests, outlived the client.
                 logger.debug('Session %s disconnected before a reply could '
                              'be sent.', session.id)
+                ended_with_goodbye = False
             finally:
                 await self._async_support.shield(
                     self._clean_up_session,
                     session
                 )
+        return ended_with_goodbye
 
     async def close_sessions(self):
         """Cleanly close active WAMP sessions with goodbye message, such as when
@@ -367,7 +382,12 @@ class Application:
             for session in self._active_sessions:
                 await tasks.spawn(session.close, 'wamp.close.system_shutdown')
 
-    async def _process_protocol_msgs(self, msgs, connection, session):
+    async def _process_protocol_msgs(
+        self,
+        msgs,
+        connection,
+        session
+    ) -> bool:
         # Once the session is authenticated, order is not important to the WAMP
         # protocol itself; messages expecting responses have identifiers for
         # referring back to them. Ordering may still be important to the app,
@@ -378,14 +398,14 @@ class Application:
             except WAMPMsgParseError:
                 await connection.abort('wamp.error.protocol_violation',
                                        'Parse error.')
-                return
+                return False
             request_type = type(request)
             handler = self._protocol_request_handlers.get(request_type)
             if handler is None:
                 # Such as a HELLO for a session that's already established.
                 await connection.abort('wamp.error.protocol_violation',
                                        'Unexpected request.')
-                return
+                return False
             if not session.is_open and request_type is not WAMPGoodbyeRequest:
                 # The session was closed, so per the spec, anything but the
                 # client's GOODBYE in reply is ignored.
@@ -397,7 +417,9 @@ class Application:
                 await session.spawn_task(handler, request, session)
             if request_type is WAMPGoodbyeRequest and not session.is_open:
                 # GOODBYE has been said both ways, which ends the session.
-                return
+                return True
+        # The client disconnected.
+        return False
 
     async def _clean_up_session(self, session):
         self._active_sessions.discard(session)
