@@ -10,6 +10,11 @@
     `wamp.error.no_such_subscription`.
 * Fix GOODBYE details and reason being read from the wrong fields.
 `WAMPGoodbyeRequest` no longer has a `request_id`.
+* Fix prefix and regex routes handling URIs they don't match. A call or
+subscription for a URI without an exact route went to the first prefix or regex
+route added.
+  * Applications relying on this should add a catch-all route such as
+    `prefix_route('')` after their other prefix and regex routes.
 
 ## 1.2.0
 * Fix the default realm never being used. Sessions requesting a realm that

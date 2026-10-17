@@ -62,7 +62,6 @@ class URIsRouter:
         for uri_pattern, handler in self._pattern_dispatch_table:
             if uri_pattern.match(uri):
                 return handler
-            return handler
 
         raise NoSuchRouteError('Procedure %s does not exist.', uri)
 
