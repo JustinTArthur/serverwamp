@@ -1,5 +1,7 @@
 # serverwamp Changelog
 ## Unreleased
+* Require Python 3.11 or newer. `serverwamp.context`, a backport of
+`contextlib.asynccontextmanager` for older Pythons, is removed.
 * Abort sessions for protocol errors with `wamp.error.protocol_violation`,
 per WAMP spec, instead of `wamp.error.protocol_error`.
 * Handle these client mistakes instead of failing in the connection handler:

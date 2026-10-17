@@ -1,9 +1,9 @@
+from contextlib import asynccontextmanager
 from functools import partial
 
 import anyio
 
 from serverwamp.adapters.async_base import AsyncSupport, AsyncTaskGroup
-from serverwamp.context import asynccontextmanager
 
 
 class AnyioAsyncSupport(AsyncSupport):

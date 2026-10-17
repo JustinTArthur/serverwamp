@@ -8,7 +8,7 @@ version = "1.2.0"
 description = "Components that add Web Application Messaging Protocol features to WebSocket servers."
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.6"
+requires-python = ">=3.11"
 authors = [
     { name = "Justin Turner Arthur", email = "justinarthur@gmail.com" },
 ]
@@ -19,11 +19,6 @@ keywords = [
 classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.6",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -37,7 +32,6 @@ classifiers = [
     "Framework :: Trio",
 ]
 dependencies = [
-    "dataclasses~=0.6;python_version<'3.7'",
     "msgpack>=1.0.0,<2",
 ]
 

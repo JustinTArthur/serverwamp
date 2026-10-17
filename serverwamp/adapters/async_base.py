@@ -2,15 +2,10 @@
 Defines base classes for how async support classes should look, mostly
 to ease serverwamp development or to ease integration in type-checked projects.
 """
-import typing
 from abc import ABC, abstractmethod
-from typing import Awaitable, Callable
+from typing import AsyncContextManager, Awaitable, Callable
 
-if hasattr(typing, 'AsyncContextManager'):
-    TaskGroupManager = typing.AsyncContextManager['AsyncTaskGroup']
-else:
-    from serverwamp.context import AbstractAsyncContextManager
-    TaskGroupManager = AbstractAsyncContextManager
+TaskGroupManager = AsyncContextManager['AsyncTaskGroup']
 
 
 class AsyncTaskGroup(ABC):

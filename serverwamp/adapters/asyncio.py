@@ -1,11 +1,9 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from typing import List, Set
 
 from serverwamp.adapters.async_base import AsyncSupport, AsyncTaskGroup
-from serverwamp.context import asynccontextmanager
-
-_schedule_in_loop = getattr(asyncio, 'create_task', asyncio.ensure_future)
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +37,7 @@ class AsyncioTaskGroup(AsyncTaskGroup):
 
     async def spawn(self, callback, *callback_args, **callback_kwargs):
         coro_obj = callback(*callback_args, **callback_kwargs)
-        task = _schedule_in_loop(coro_obj)
+        task = asyncio.create_task(coro_obj)
         task.add_done_callback(self._task_done)
         self._tasks.add(task)
         if self._errors:
