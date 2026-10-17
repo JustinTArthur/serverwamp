@@ -160,13 +160,21 @@ class WAMPSession:
         self.identity = identity
 
     async def abort(self, uri=None, message=None):
-        await self.connection.send_msg(abort_msg(uri, message))
+        try:
+            await self.connection.send_msg(abort_msg(uri, message))
+        except ConnectionClosed:
+            # The client is already gone, so there's no one to tell.
+            pass
         self._said_goodbye = True
         await self.close(uri, message)
 
     async def close(self, uri=None, message=None):
         if self.is_open and not self._said_goodbye:
-            await self.connection.send_msg(goodbye_msg(uri, message))
+            try:
+                await self.connection.send_msg(goodbye_msg(uri, message))
+            except ConnectionClosed:
+                # The client is already gone, so there's no one to tell.
+                pass
         self.is_open = False
 
 

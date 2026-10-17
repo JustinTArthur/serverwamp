@@ -27,6 +27,7 @@ existing subscription, without running the subscription handler again.
 cancelling the session's other calls, and keeping the session in memory.
   * Sends to a disconnected client raise `serverwamp.ConnectionClosed`, a
     `ConnectionError`, instead of the transport's own exception.
+  * `WAMPSession.close()` and `abort()` succeed when the client already left.
   * Unhandled exceptions from a session's tasks are logged. With Trio or AnyIO,
     they no longer end the session.
 * Run progressive RPC handlers' `finally` blocks as soon as their call is

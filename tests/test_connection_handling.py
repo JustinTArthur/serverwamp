@@ -382,3 +382,37 @@ def test_progressive_rpc_closed_when_handled(disconnect):
     # The procedure is closed as soon as its call is handled, not later by
     # the event loop's async generator finalizer.
     assert events[:2] == ['procedure closed', 'call handled']
+
+
+def test_close_sessions_after_client_left():
+    async def exercise():
+        connection = DisconnectingMemoryConnection()
+        app = build_app()
+        handling = asyncio.ensure_future(app.handle_connection(connection))
+        connection.inbound.put_nowait([WAMPMsgType.HELLO, REALM_URI, {}])
+        welcome = await connection.receive()
+        assert welcome[0] == WAMPMsgType.WELCOME
+
+        # The transport is gone, but the session hasn't noticed yet.
+        connection.closed = True
+        await app.close_sessions()
+
+        await connection.close()
+        await asyncio.wait_for(handling, TIMEOUT)
+
+    run(exercise())
+
+
+@pytest.mark.parametrize('end_session', ('close', 'abort'))
+def test_end_session_after_client_left(end_session):
+    async def exercise():
+        connection = DisconnectingMemoryConnection()
+        session = WAMPSession(connection, serverwamp.Realm(REALM_URI),
+                              tasks=None)
+        await session.mark_authenticated()
+        await connection.close()
+
+        await getattr(session, end_session)('wamp.close.system_shutdown')
+        assert not session.is_open
+
+    run(exercise())
