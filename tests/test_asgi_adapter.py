@@ -259,3 +259,54 @@ def test_send_after_disconnect_raises_connection_closed(ws_protocol):
         await connection.abort('wamp.error.protocol_violation')
 
     run(exercise())
+
+
+def invoke_asgi(legacy, scope, receive, send):
+    wamp_app = serverwamp.Application()
+    if legacy:
+        return wamp_app.legacy_asgi_application()(scope)(receive, send)
+    return wamp_app.asgi_application()(scope, receive, send)
+
+
+@pytest.mark.parametrize('legacy', (False, True))
+def test_lifespan_acknowledged(legacy):
+    async def exercise():
+        to_app = asyncio.Queue()
+        from_app = asyncio.Queue()
+        handling = asyncio.ensure_future(invoke_asgi(
+            legacy, {'type': 'lifespan'}, to_app.get, from_app.put
+        ))
+        to_app.put_nowait({'type': 'lifespan.startup'})
+        assert await asyncio.wait_for(from_app.get(), TIMEOUT) == {
+            'type': 'lifespan.startup.complete'
+        }
+        to_app.put_nowait({'type': 'lifespan.shutdown'})
+        assert await asyncio.wait_for(from_app.get(), TIMEOUT) == {
+            'type': 'lifespan.shutdown.complete'
+        }
+        await asyncio.wait_for(handling, TIMEOUT)
+
+    run(exercise())
+
+
+@pytest.mark.parametrize('legacy', (False, True))
+def test_http_request_told_to_upgrade(legacy):
+    async def exercise():
+        sent = []
+
+        async def receive():
+            return {'type': 'http.request', 'body': b'', 'more_body': False}
+
+        async def send(event):
+            sent.append(event)
+
+        scope = {'type': 'http', 'path': '/', 'headers': []}
+        await asyncio.wait_for(invoke_asgi(legacy, scope, receive, send),
+                               TIMEOUT)
+        return sent
+
+    sent = run(exercise())
+    assert [event['type'] for event in sent] == [
+        'http.response.start', 'http.response.body'
+    ]
+    assert sent[0]['status'] == 426

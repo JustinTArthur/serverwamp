@@ -572,6 +572,7 @@ class Application:
         paths: Optional[Collection[str]] = None
     ):
         from serverwamp.adapters.asgi import (connection_for_asgi_invocation,
+                                              handle_asgi_lifespan,
                                               handle_asgi_path_not_found)
         """Returns an ASGI application callable that serves WAMP on the given
         paths. Other paths will return a 404. If paths is omitted, any path
@@ -582,10 +583,15 @@ class Application:
             receive: Callable[[], Awaitable[Mapping]],
             send: Callable[[Mapping], Awaitable]
         ) -> None:
+            if scope['type'] == 'lifespan':
+                return await handle_asgi_lifespan(receive, send)
             if paths and scope['path'] not in paths:
                 return await handle_asgi_path_not_found(scope, receive, send)
             connection = await connection_for_asgi_invocation(scope, receive,
                                                               send)
+            if connection is None:
+                # Not a WebSocket request, so it was told to upgrade.
+                return
             await self.handle_connection(connection)
         return application_callable
 
@@ -594,6 +600,7 @@ class Application:
         paths: Optional[Collection[str]] = None
     ):
         from serverwamp.adapters.asgi import (connection_for_asgi_invocation,
+                                              handle_asgi_lifespan,
                                               handle_asgi_path_not_found)
 
         def application_callable(
@@ -606,12 +613,17 @@ class Application:
             Awaitable
         ]:
             async def application_handler(receive, send):
+                if scope['type'] == 'lifespan':
+                    return await handle_asgi_lifespan(receive, send)
                 if paths and scope['path'] not in paths:
                     return (
                         await handle_asgi_path_not_found(scope, receive, send)
                     )
                 connection = await connection_for_asgi_invocation(scope,
                                                                   receive, send)
+                if connection is None:
+                    # Not a WebSocket request, so it was told to upgrade.
+                    return
                 await self.handle_connection(connection)
             return application_handler
 

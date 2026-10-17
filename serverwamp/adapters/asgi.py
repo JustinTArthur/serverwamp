@@ -54,6 +54,22 @@ async def handle_asgi_path_not_found(
     await send({'type': 'http.response.body'})
 
 
+async def handle_asgi_lifespan(
+    receive: Callable[[], Awaitable[Mapping]],
+    send: Callable[[Mapping], Awaitable]
+):
+    """Acknowledges the ASGI server's startup and shutdown, as serverwamp has
+    nothing to set up or tear down for them.
+    """
+    while True:
+        event = await receive()
+        if event['type'] == 'lifespan.startup':
+            await send({'type': 'lifespan.startup.complete'})
+        elif event['type'] == 'lifespan.shutdown':
+            await send({'type': 'lifespan.shutdown.complete'})
+            return
+
+
 async def connection_for_asgi_invocation(
     scope: Mapping,
     receive: Callable[[], Awaitable[Mapping]],

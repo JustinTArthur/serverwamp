@@ -46,6 +46,10 @@ instead of cancelling them.
 * Fix sessions never being cleaned up with Trio. Teardown after `yield` in
 subscription and session state handlers now runs, and ended sessions are no
 longer kept in memory.
+* Fix ASGI apps failing on anything other than a WebSocket. HTTP requests are
+answered with 426 Upgrade Required without an error, and lifespan startup and
+shutdown are acknowledged, so an app from `asgi_application()` can be served
+directly.
 
 ## 1.2.0
 * Fix the default realm never being used. Sessions requesting a realm that
