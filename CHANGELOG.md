@@ -50,6 +50,8 @@ longer kept in memory.
 answered with 426 Upgrade Required without an error, and lifespan startup and
 shutdown are acknowledged, so an app from `asgi_application()` can be served
 directly.
+* Rename `serverwamp.adapters.asgi.ASGIWebSocketConection` to
+`ASGIWebSocketConnection`.
 * Reject aiohttp WebSocket connections that offer none of the supported WAMP
 subprotocols with 400 Bad Request. They were upgraded and then failed in the
 request handler.

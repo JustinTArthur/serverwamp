@@ -110,7 +110,7 @@ async def connection_for_asgi_invocation(
     return connection
 
 
-class ASGIWebSocketConection(Connection, metaclass=ABCMeta):
+class ASGIWebSocketConnection(Connection, metaclass=ABCMeta):
     def __init__(self, asgi_scope, asgi_receiver, asgi_sender, cookies):
         super().__init__()
         self._asgi_scope = asgi_scope
@@ -145,7 +145,7 @@ class ASGIWebSocketConection(Connection, metaclass=ABCMeta):
             pass
 
 
-class ASGIJSONWebSocketConnection(ASGIWebSocketConection):
+class ASGIJSONWebSocketConnection(ASGIWebSocketConnection):
     async def iterate_msgs(self):
         async for ws_msg in self.iterate_ws_msgs('text'):
             yield deserialize_json(ws_msg)
@@ -162,7 +162,7 @@ class ASGIJSONWebSocketConnection(ASGIWebSocketConection):
             raise ConnectionClosed() from None
 
 
-class ASGIBatchedJSONWebSocketConnection(ASGIWebSocketConection):
+class ASGIBatchedJSONWebSocketConnection(ASGIWebSocketConnection):
     async def iterate_msgs(self):
         async for ws_msg in self.iterate_ws_msgs('text'):
             for msg in objects_from_json_batch(ws_msg):
@@ -189,7 +189,7 @@ class ASGIBatchedJSONWebSocketConnection(ASGIWebSocketConection):
             raise ConnectionClosed() from None
 
 
-class ASGIMsgPackWebSocketConnection(ASGIWebSocketConection):
+class ASGIMsgPackWebSocketConnection(ASGIWebSocketConnection):
     async def iterate_msgs(self):
         async for ws_msg in self.iterate_ws_msgs('bytes'):
             yield object_from_msgpack(ws_msg)
@@ -205,7 +205,7 @@ class ASGIMsgPackWebSocketConnection(ASGIWebSocketConection):
             raise ConnectionClosed() from None
 
 
-class ASGIBatchedMsgPackWebSocketConnection(ASGIWebSocketConection):
+class ASGIBatchedMsgPackWebSocketConnection(ASGIWebSocketConnection):
     async def iterate_msgs(self):
         async for ws_msg in self.iterate_ws_msgs('bytes'):
             for msg in objects_from_msgpack_batch(ws_msg):
@@ -239,7 +239,7 @@ class ASGIBatchedMsgPackWebSocketConnection(ASGIWebSocketConection):
 
 
 ws_protocol_connection_classes: Mapping[
-    str, type[ASGIWebSocketConection]
+    str, type[ASGIWebSocketConnection]
 ] = {
     'wamp.2.msgpack': ASGIMsgPackWebSocketConnection,
     'wamp.2.msgpack.batched': ASGIBatchedMsgPackWebSocketConnection,
