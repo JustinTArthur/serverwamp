@@ -52,9 +52,10 @@ shutdown are acknowledged, so an app from `asgi_application()` can be served
 directly.
 * Rename `serverwamp.adapters.asgi.ASGIWebSocketConection` to
 `ASGIWebSocketConnection`.
-* Reject aiohttp WebSocket connections that offer none of the supported WAMP
-subprotocols with 400 Bad Request. They were upgraded and then failed in the
-request handler.
+* Reject WebSocket connections that offer none of the supported WAMP
+subprotocols, with 400 Bad Request with aiohttp and 403 Forbidden from ASGI
+servers. aiohttp upgraded them and then failed in the request handler, and ASGI
+accepted them with `wamp.2.msgpack.batched`, which the client hadn't offered.
 * Fix RPC handlers given to `set_rpc_handler()` failing on every call unless
 their parameter was named `rpc_request`.
 

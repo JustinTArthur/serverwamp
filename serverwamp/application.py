@@ -602,7 +602,7 @@ class Application:
             connection = await connection_for_asgi_invocation(scope, receive,
                                                               send)
             if connection is None:
-                # Not a WebSocket request, so it was told to upgrade.
+                # Not a WAMP WebSocket request, so it was turned away.
                 return
             await self.handle_connection(connection)
         return application_callable
@@ -636,7 +636,7 @@ class Application:
                 connection = await connection_for_asgi_invocation(scope,
                                                                   receive, send)
                 if connection is None:
-                    # Not a WebSocket request, so it was told to upgrade.
+                    # Not a WAMP WebSocket request, so it was turned away.
                     return
                 await self.handle_connection(connection)
             return application_handler

@@ -290,6 +290,27 @@ def test_lifespan_acknowledged(legacy):
 
 
 @pytest.mark.parametrize('legacy', (False, True))
+@pytest.mark.parametrize('client_protocols', (None, [], ['wamp.2.cbor']))
+def test_no_supported_subprotocol_is_rejected(legacy, client_protocols):
+    async def exercise():
+        sent = []
+        to_app = asyncio.Queue()
+        to_app.put_nowait({'type': 'websocket.connect'})
+
+        async def send(event):
+            sent.append(event)
+
+        scope = {'type': 'websocket', 'path': '/', 'headers': []}
+        if client_protocols is not None:
+            scope['subprotocols'] = client_protocols
+        await asyncio.wait_for(invoke_asgi(legacy, scope, to_app.get, send),
+                               TIMEOUT)
+        return sent
+
+    assert run(exercise()) == [{'type': 'websocket.close'}]
+
+
+@pytest.mark.parametrize('legacy', (False, True))
 def test_http_request_told_to_upgrade(legacy):
     async def exercise():
         sent = []

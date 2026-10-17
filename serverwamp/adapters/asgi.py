@@ -84,14 +84,13 @@ async def connection_for_asgi_invocation(
         })
         return None
 
-    client_subprotocols = supported_subset(scope['subprotocols'])
-    if client_subprotocols:
-        subprotocol = sorted(
-            client_subprotocols,
-            key=protocol_preference
-        )[0]
-    else:
-        subprotocol = SUPPORTED_WS_PROTOCOLS[0]
+    client_subprotocols = supported_subset(scope.get('subprotocols', ()))
+    if not client_subprotocols:
+        # WAMP must be negotiated as a WebSocket subprotocol. Closing before
+        # accepting rejects the handshake.
+        await send({'type': 'websocket.close'})
+        return None
+    subprotocol = min(client_subprotocols, key=protocol_preference)
 
     await send({
         'type': 'websocket.accept',
