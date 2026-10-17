@@ -190,3 +190,41 @@ def test_duplicate_subscribe_returns_existing_subscription():
 
     run(exercise())
     assert topic_events == ['subscribed', 'unsubscribed']
+
+
+def test_subscribe_to_unrouted_topic_errors():
+    topic_routes = serverwamp.TopicRouteSet()
+
+    @topic_routes.prefix_route('test.routed.')
+    async def subscribe(topic_uri):
+        yield
+
+    async def exercise():
+        connection = MemoryConnection()
+        realm = serverwamp.Realm(REALM_URI)
+        realm.add_topic_routes(topic_routes)
+        app = serverwamp.Application(allow_default_realm=False)
+        app.add_realm(realm)
+        handling = asyncio.ensure_future(app.handle_connection(connection))
+        connection.inbound.put_nowait([WAMPMsgType.HELLO, REALM_URI, {}])
+        welcome = await connection.receive()
+        assert welcome[0] == WAMPMsgType.WELCOME
+
+        connection.inbound.put_nowait(
+            [WAMPMsgType.SUBSCRIBE, 1, {}, 'test.unrouted']
+        )
+        assert await connection.receive() == (
+            WAMPMsgType.ERROR, WAMPMsgType.SUBSCRIBE, 1, {},
+            'wamp.error.invalid_uri'
+        )
+
+        # The session is still open, and a routed topic can be subscribed to.
+        connection.inbound.put_nowait(
+            [WAMPMsgType.SUBSCRIBE, 2, {}, 'test.routed.topic']
+        )
+        subscribed = await connection.receive()
+        assert subscribed[:2] == (WAMPMsgType.SUBSCRIBED, 2)
+        await connection.close()
+        await asyncio.wait_for(handling, TIMEOUT)
+
+    run(exercise())

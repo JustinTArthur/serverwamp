@@ -8,6 +8,8 @@
     as HELLO.
   * UNSUBSCRIBE for a subscription the session doesn't have is answered with
     `wamp.error.no_such_subscription`.
+  * SUBSCRIBE for a topic without a route is answered with
+    `wamp.error.invalid_uri`.
 * Fix GOODBYE details and reason being read from the wrong fields.
 `WAMPGoodbyeRequest` no longer has a `request_id`.
 * Fix prefix and regex routes handling URIs they don't match. A call or

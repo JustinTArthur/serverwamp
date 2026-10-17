@@ -16,8 +16,10 @@ from serverwamp.protocol import (WAMPGoodbyeRequest, WAMPHelloRequest,
                                  WAMPUnsubscribeRequest,
                                  call_error_response_msg,
                                  call_result_response_msg,
+                                 subscribe_error_response_msg,
                                  unsubscribe_error_response_msg,
                                  wamp_request_from_msg)
+from serverwamp.routing import NoSuchRouteError
 from serverwamp.rpc import (RPCErrorResult, RPCHandler, RPCProgressReport,
                             RPCRequest, RPCRouter)
 from serverwamp.session import NoSuchSubscription, WAMPSession
@@ -498,7 +500,15 @@ class Application:
 
         await session.register_subscription(request.topic)
         subscribe_unsubscribe_iter = session.realm.handle_subscription(request.topic, session)
-        await subscribe_unsubscribe_iter.__anext__()
+        try:
+            await subscribe_unsubscribe_iter.__anext__()
+        except NoSuchRouteError:
+            # Only topics the application routes can be subscribed to.
+            await session.unregister_subscription(sub_id)
+            await session.send_raw(
+                subscribe_error_response_msg(request, 'wamp.error.invalid_uri')
+            )
+            return
         self._subscription_exits[session][sub_id] = subscribe_unsubscribe_iter
         await session.mark_subscribed(request, sub_id)
 

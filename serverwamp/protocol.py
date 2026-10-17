@@ -253,6 +253,14 @@ def subscribed_response_msg(
     return WAMPMsgType.SUBSCRIBED, request.request_id, subscription_id
 
 
+def subscribe_error_response_msg(
+    request: WAMPSubscribeRequest,
+    error_uri
+):
+    return (WAMPMsgType.ERROR, WAMPMsgType.SUBSCRIBE, request.request_id, {},
+            error_uri)
+
+
 def unsubscribe_error_response_msg(
     request: WAMPUnsubscribeRequest,
     error_uri
