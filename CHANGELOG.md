@@ -1,10 +1,11 @@
 # serverwamp Changelog
 ## Unreleased
 * Handle these client mistakes instead of failing in the connection handler:
-  * WebSocket messages that aren't valid JSON or MessagePack and WAMP
-    messages that are too short or have fields of the wrong type abort the
-    session with a protocol error. Message types must be integers, so `1.0`
-    and `true` are no longer accepted as HELLO.
+  * WebSocket messages that aren't valid JSON or MessagePack, WAMP messages
+    that are too short or have fields of the wrong type, and HELLO after the
+    session is established abort the session with a protocol error.
+    Message types must be integers, so `1.0` and `true` are no longer accepted
+    as HELLO.
 * Fix GOODBYE details and reason being read from the wrong fields.
 `WAMPGoodbyeRequest` no longer has a `request_id`.
 

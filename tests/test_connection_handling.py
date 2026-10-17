@@ -76,3 +76,23 @@ def test_malformed_wamp_aborts(msg, in_session, synchronize_requests):
         await asyncio.wait_for(handling, TIMEOUT)
 
     run(exercise())
+
+
+@pytest.mark.parametrize('synchronize_requests', (False, True))
+def test_hello_in_session_aborts(synchronize_requests):
+    async def exercise():
+        connection = MemoryConnection()
+        app = build_app(synchronize_requests=synchronize_requests)
+        handling = asyncio.ensure_future(app.handle_connection(connection))
+        connection.inbound.put_nowait([WAMPMsgType.HELLO, REALM_URI, {}])
+        welcome = await connection.receive()
+        assert welcome[0] == WAMPMsgType.WELCOME
+
+        connection.inbound.put_nowait([WAMPMsgType.HELLO, REALM_URI, {}])
+        abort = await connection.receive()
+        assert abort[0] == WAMPMsgType.ABORT
+        assert abort[1] == {'message': 'Unexpected request.'}
+        assert abort[2] == 'wamp.error.protocol_error'
+        await asyncio.wait_for(handling, TIMEOUT)
+
+    run(exercise())
