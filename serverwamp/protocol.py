@@ -11,6 +11,8 @@ from typing import Any, Iterable, Mapping, MutableMapping, Optional
 
 logger = logging.getLogger(__name__)
 
+LIST_TYPES = (list, tuple)
+
 
 @unique
 class WAMPMsgType(IntEnum):
@@ -55,11 +57,25 @@ class WAMPHelloRequest:
 
     @classmethod
     def from_msg_data(cls, msg_data: Sequence):
-        try:
-            request = cls(realm_uri=msg_data[0], details=msg_data[1])
-        except KeyError:
+        if (
+            len(msg_data) < 2
+            or not isinstance(msg_data[0], str)
+            or not isinstance(msg_data[1], dict)
+        ):
             raise WAMPMsgParseError('Poorly formed hello')
-        return request
+        details = msg_data[1]
+        auth_id = details.get('authid')
+        # Some clients send null for authentication details they don't use.
+        auth_methods = details.get('authmethods')
+        if (
+            (auth_id is not None and not isinstance(auth_id, str))
+            or (auth_methods is not None and (
+                not isinstance(auth_methods, LIST_TYPES)
+                or not all(isinstance(method, str) for method in auth_methods)
+            ))
+        ):
+            raise WAMPMsgParseError('Poorly formed hello')
+        return cls(realm_uri=msg_data[0], details=details)
 
 
 @dataclass(frozen=True)
@@ -74,15 +90,18 @@ class WAMPSubscribeRequest(WAMPRequest):
 
     @classmethod
     def from_msg_data(cls, msg_data: Sequence):
-        try:
-            request = cls(
-                request_id=msg_data[0],
-                options=msg_data[1],
-                topic=msg_data[2]
-            )
-        except KeyError:
+        if (
+            len(msg_data) < 3
+            or not isinstance(msg_data[0], int)
+            or not isinstance(msg_data[1], dict)
+            or not isinstance(msg_data[2], str)
+        ):
             raise WAMPMsgParseError('Poorly formed subscribe')
-        return request
+        return cls(
+            request_id=msg_data[0],
+            options=msg_data[1],
+            topic=msg_data[2]
+        )
 
 
 @dataclass(frozen=True)
@@ -104,14 +123,16 @@ class WAMPUnsubscribeRequest(WAMPRequest):
 
     @classmethod
     def from_msg_data(cls, msg_data: Sequence):
-        try:
-            request = cls(
-                request_id=msg_data[0],
-                subscription=msg_data[1]
-            )
-        except KeyError:
+        if (
+            len(msg_data) < 2
+            or not isinstance(msg_data[0], int)
+            or not isinstance(msg_data[1], int)
+        ):
             raise WAMPMsgParseError('Poorly formed unsubscribe')
-        return request
+        return cls(
+            request_id=msg_data[0],
+            subscription=msg_data[1]
+        )
 
 
 @dataclass(frozen=True)
@@ -138,31 +159,24 @@ class WAMPRPCRequest(WAMPRequest):
 
     @classmethod
     def from_msg_data(cls, msg_data: Sequence):
-        try:
-            request_id = msg_data[0]
-            uri = msg_data[2]
-            if len(msg_data) > 3:
-                args = msg_data[3]
-            else:
-                args = ()
-            if len(msg_data) > 4:
-                kwargs = msg_data[4]
-            else:
-                kwargs = {}
-        except KeyError:
+        field_count = len(msg_data)
+        if (
+            field_count < 3
+            or not isinstance(msg_data[0], int)
+            or not isinstance(msg_data[1], dict)
+            or not isinstance(msg_data[2], str)
+            or (field_count > 3 and not isinstance(msg_data[3], LIST_TYPES))
+            or (field_count > 4 and not isinstance(msg_data[4], dict))
+        ):
             raise WAMPMsgParseError('Poorly formed RPC call')
 
-        if not isinstance(request_id, int) or not isinstance(uri, str):
-            raise WAMPMsgParseError('Poorly formed RPC call')
-
-        request = cls(
-            request_id,
-            uri=uri,
+        return cls(
+            msg_data[0],
+            uri=msg_data[2],
             options=msg_data[1],
-            args=args,
-            kwargs=kwargs
+            args=msg_data[3] if field_count > 3 else (),
+            kwargs=msg_data[4] if field_count > 4 else {}
         )
-        return request
 
 
 @dataclass(frozen=True)
@@ -190,11 +204,13 @@ class WAMPGoodbyeRequest:
     @classmethod
     def from_msg_data(cls, msg_data: Sequence):
         # GOODBYE has no request ID: [GOODBYE, Details|dict, Reason|uri]
-        try:
-            request = cls(details=msg_data[0], reason_uri=msg_data[1])
-        except IndexError:
+        if (
+            len(msg_data) < 2
+            or not isinstance(msg_data[0], dict)
+            or not isinstance(msg_data[1], str)
+        ):
             raise WAMPMsgParseError('Poorly formed goodbye')
-        return request
+        return cls(details=msg_data[0], reason_uri=msg_data[1])
 
 
 def call_result_response_msg(
@@ -371,7 +387,12 @@ request_parser_for_msg_type = {
 def wamp_request_from_msg(
     msg: Sequence
 ) -> WAMPRequest:
+    if not isinstance(msg, LIST_TYPES) or not msg:
+        raise WAMPMsgParseError('Not a WAMP message')
     msg_type, *msg_data = msg
+    # Excludes the likes of 1.0 and True, which would otherwise match HELLO.
+    if not isinstance(msg_type, int) or isinstance(msg_type, bool):
+        raise WAMPMsgParseError('Unsupported request')
     try:
         parse_msg = request_parser_for_msg_type[msg_type]
     except KeyError:
