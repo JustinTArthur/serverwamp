@@ -9,6 +9,7 @@ from typing import (Any, AsyncIterator, Awaitable, Callable, Collection,
                     Optional, Type, Union)
 
 from serverwamp.adapters.async_base import AsyncSupport
+from serverwamp.connection import ConnectionClosed
 from serverwamp.events import SubscriptionHandler, TopicsRouter
 from serverwamp.protocol import (WAMPGoodbyeRequest, WAMPHelloRequest,
                                  WAMPMsgParseError, WAMPRequest,
@@ -327,6 +328,11 @@ class Application:
             )
             try:
                 await self.handle_session(session, msgs)
+            except ConnectionClosed:
+                # A reply to a request handled outside a session task, such
+                # as with synchronize_requests, outlived the client.
+                logger.debug('Session %s disconnected before a reply could '
+                             'be sent.', session.id)
             finally:
                 await self._async_support.shield(
                     self._clean_up_session,

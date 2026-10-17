@@ -31,6 +31,11 @@ def build_web_app(handler_results):
     async def say_hello():
         return 'hello',
 
+    @rpc_routes.route('slow')
+    async def slow():
+        await asyncio.sleep(0.1)
+        return 'done'
+
     realm = serverwamp.Realm(REALM_URI)
     realm.add_rpc_routes(rpc_routes)
     wamp_app = serverwamp.Application(allow_default_realm=False)
@@ -258,3 +263,47 @@ def test_send_to_closing_websocket_raises_connection_closed(ws_protocol):
         await connection.abort('wamp.error.protocol_violation')
 
     run(exercise())
+
+
+def test_disconnect_with_rpcs_in_flight(caplog):
+    handler_results = []
+
+    async def exercise():
+        # aiohttp's TestServer cancels handlers when the client disconnects,
+        # but servers don't by default, so RPCs outlive the client.
+        runner = web.AppRunner(build_web_app(handler_results))
+        await runner.setup()
+        site = web.TCPSite(runner, '127.0.0.1', 0)
+        await site.start()
+        host, port = runner.addresses[0][:2]
+        try:
+            async with aiohttp.ClientSession() as http:
+                ws = await http.ws_connect(f'http://{host}:{port}/',
+                                           protocols=('wamp.2.json',))
+                await ws.send_json([WAMPMsgType.HELLO, REALM_URI, {}])
+                welcome = await ws.receive_json()
+                assert welcome[0] == WAMPMsgType.WELCOME
+
+                await ws.send_json([WAMPMsgType.CALL, 1, {}, 'slow'])
+                await ws.send_json([WAMPMsgType.CALL, 2, {}, 'slow'])
+                await asyncio.sleep(0.01)
+                await ws.close()
+
+            await wait_for_handler(handler_results)
+        finally:
+            await runner.cleanup()
+
+    with caplog.at_level(logging.DEBUG):
+        run(exercise())
+
+    assert len(handler_results) == 1
+    assert not [
+        record for record in caplog.records
+        if record.levelno >= logging.ERROR
+    ]
+    # Both calls ran to completion and found the client gone.
+    assert len([
+        record for record in caplog.records
+        if record.name == 'serverwamp.session' and 'disconnected' in
+        record.getMessage()
+    ]) == 2

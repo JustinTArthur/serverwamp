@@ -1,9 +1,12 @@
 import asyncio
+import gc
+import logging
 
 import pytest
 
 import serverwamp
 from serverwamp.protocol import WAMPMsgType
+from serverwamp.session import WAMPSession
 
 from memory_connection import TIMEOUT, MemoryConnection, run
 
@@ -256,3 +259,72 @@ def test_failed_transport_authentication_aborts(hello_details):
         await asyncio.wait_for(handling, TIMEOUT)
 
     run(exercise())
+
+
+class DisconnectingMemoryConnection(MemoryConnection):
+    """Fails sends once closed, as transports do after a disconnect."""
+    def __init__(self):
+        super().__init__()
+        self.closed = False
+
+    async def send_msg(self, msg):
+        if self.closed:
+            raise serverwamp.ConnectionClosed()
+        await super().send_msg(msg)
+
+    async def close(self):
+        self.closed = True
+        await super().close()
+
+
+def live_sessions():
+    return sum(isinstance(obj, WAMPSession) for obj in gc.get_objects())
+
+
+@pytest.mark.parametrize('synchronize_requests', (False, True))
+def test_disconnect_with_rpcs_in_flight(caplog, synchronize_requests):
+    finished_calls = []
+    rpc_routes = serverwamp.RPCRouteSet()
+
+    @rpc_routes.route('slow')
+    async def slow(call_id):
+        await asyncio.sleep(0.05)
+        finished_calls.append(call_id)
+        return 'done'
+
+    async def exercise():
+        connection = DisconnectingMemoryConnection()
+        realm = serverwamp.Realm(REALM_URI)
+        realm.add_rpc_routes(rpc_routes)
+        app = serverwamp.Application(
+            allow_default_realm=False,
+            synchronize_requests=synchronize_requests
+        )
+        app.add_realm(realm)
+        handling = asyncio.ensure_future(app.handle_connection(connection))
+        connection.inbound.put_nowait([WAMPMsgType.HELLO, REALM_URI, {}])
+        welcome = await connection.receive()
+        assert welcome[0] == WAMPMsgType.WELCOME
+
+        for request_id in (1, 2):
+            connection.inbound.put_nowait(
+                [WAMPMsgType.CALL, request_id, {}, 'slow', [request_id]]
+            )
+        await asyncio.sleep(0)
+        await connection.close()
+        await asyncio.wait_for(handling, TIMEOUT)
+
+    gc.collect()
+    gc.disable()
+    try:
+        with caplog.at_level(logging.WARNING):
+            run(exercise())
+        # Freed by reference counting alone, not left for the cyclic GC.
+        assert live_sessions() == 0
+    finally:
+        gc.enable()
+
+    assert not caplog.records
+    # With synchronize_requests, the session stops handling messages once the
+    # client is gone. Otherwise, calls already started all finish.
+    assert finished_calls == ([1] if synchronize_requests else [1, 2])

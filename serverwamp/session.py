@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Iterable, Iterator
 
 from serverwamp.adapters.async_base import AsyncTaskGroup
+from serverwamp.connection import ConnectionClosed
 from serverwamp.protocol import (abort_msg, cra_challenge_msg,
                                  cra_challenge_string, event_msg,
                                  generate_global_id, goodbye_msg, scram_nonce,
@@ -78,7 +79,20 @@ class WAMPSession:
         return iter(self._custom_state)
 
     async def spawn_task(self, fn, *fn_args, **fn_kwargs):
-        await self._tasks.spawn(fn, *fn_args, **fn_kwargs)
+        await self._tasks.spawn(self._run_task, fn, *fn_args, **fn_kwargs)
+
+    async def _run_task(self, fn, *fn_args, **fn_kwargs):
+        # Errors stay in the task instead of failing the session's task group,
+        # which would cancel the session's other tasks. Not holding on to them
+        # also lets the session be freed without waiting on the cyclic GC.
+        try:
+            await fn(*fn_args, **fn_kwargs)
+        except ConnectionClosed:
+            logger.debug('Session %s disconnected before %s could finish '
+                         'sending.', self.id, getattr(fn, '__qualname__', fn))
+        except Exception:
+            logger.exception('Unhandled exception from %s in session %s.',
+                             getattr(fn, '__qualname__', fn), self.id)
 
     async def send_raw(self, msg: Iterable):
         await self.connection.send_msg(msg)
