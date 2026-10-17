@@ -130,6 +130,25 @@ def assert_no_aiohttp_errors(caplog):
     ]
 
 
+@pytest.mark.parametrize('client_protocols', ((), ('wamp.2.cbor',)))
+def test_no_supported_subprotocol_is_rejected(caplog, client_protocols):
+    handler_results = []
+
+    async def exercise():
+        client = await start_client(handler_results, False)
+        try:
+            with pytest.raises(aiohttp.WSServerHandshakeError) as exc_info:
+                await client.ws_connect('/', protocols=client_protocols)
+            assert exc_info.value.status == 400
+        finally:
+            await client.close()
+
+    with caplog.at_level(logging.ERROR, logger='aiohttp'):
+        run(exercise())
+
+    assert_no_aiohttp_errors(caplog)
+
+
 @pytest.mark.parametrize('first_msg', (
     [WAMPMsgType.HELLO, 'unknown.realm', {}],
     [WAMPMsgType.CALL, 1, {}, 'say_hello'],

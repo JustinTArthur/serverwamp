@@ -24,9 +24,15 @@ SUPPORTED_WS_PROTOCOLS = (
 
 async def connection_for_aiohttp_request(request: aiohttp.web.Request):
     ws = web.WebSocketResponse(protocols=SUPPORTED_WS_PROTOCOLS)
+    ws_protocol = ws.can_prepare(request).protocol
+    if ws_protocol is None:
+        # WAMP must be negotiated as a WebSocket subprotocol.
+        raise web.HTTPBadRequest(
+            text='A supported WAMP WebSocket subprotocol is required.'
+        )
     await ws.prepare(request)
 
-    construct_connection = ws_protocol_connection_classes[ws.ws_protocol]
+    construct_connection = ws_protocol_connection_classes[ws_protocol]
     connection = construct_connection(ws, request)
     return connection
 
