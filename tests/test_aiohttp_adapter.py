@@ -7,13 +7,30 @@ import pytest
 
 aiohttp = pytest.importorskip('aiohttp')
 from aiohttp import WSMsgType, web  # noqa: E402
-from aiohttp.test_utils import TestClient, TestServer  # noqa: E402
 
 import serverwamp  # noqa: E402
 from serverwamp.helpers import pack_uint32_be  # noqa: E402
 from serverwamp.protocol import WAMPMsgType  # noqa: E402
 
 REALM_URI = 'test.realm'
+
+AIOHTTP_VERSION = tuple(
+    int(part) for part in aiohttp.__version__.split('.')[:2]
+)
+# Whether aiohttp cancels a request handler when its client disconnects:
+# always before 3.8, never in 3.8, and optionally, off by default, from 3.9.
+HANDLER_CANCELLATION_OPTIONAL = AIOHTTP_VERSION >= (3, 9)
+
+
+@pytest.fixture(params=(False, True), ids=('uncancelled', 'cancelled'))
+def handler_cancellation(request):
+    if not HANDLER_CANCELLATION_OPTIONAL:
+        always_cancels = AIOHTTP_VERSION < (3, 8)
+        if request.param != always_cancels:
+            pytest.skip(f'aiohttp {aiohttp.__version__} '
+                        f'{"always" if always_cancels else "never"} cancels '
+                        f'handlers.')
+    return request.param
 
 
 def run(coro):
@@ -24,7 +41,7 @@ def run(coro):
         loop.close()
 
 
-def build_web_app(handler_results):
+def build_web_app(handler_results, slow_calls):
     rpc_routes = serverwamp.RPCRouteSet()
 
     @rpc_routes.route('say_hello')
@@ -33,7 +50,12 @@ def build_web_app(handler_results):
 
     @rpc_routes.route('slow')
     async def slow():
-        await asyncio.sleep(0.1)
+        try:
+            await asyncio.sleep(0.1)
+        except asyncio.CancelledError:
+            slow_calls.append('cancelled')
+            raise
+        slow_calls.append('finished')
         return 'done'
 
     realm = serverwamp.Realm(REALM_URI)
@@ -49,21 +71,56 @@ def build_web_app(handler_results):
 
     web_app = web.Application()
     web_app.router.add_get('/', recording_handler)
-    return web_app
+    return web_app, wamp_app
 
 
-async def wait_for_handler(handler_results, timeout=5.0):
+async def wait_until(condition, failure, timeout=5.0):
     for _ in range(int(timeout / 0.01)):
-        if handler_results:
+        if condition():
             return
         await asyncio.sleep(0.01)
-    raise AssertionError('aiohttp request handler never finished.')
+    raise AssertionError(failure)
 
 
-async def start_client(handler_results):
-    client = TestClient(TestServer(build_web_app(handler_results)))
-    await client.start_server()
-    return client
+async def wait_for_handler(handler_results):
+    await wait_until(lambda: handler_results,
+                     'aiohttp request handler never finished.')
+
+
+class Client:
+    """Connects to the test app served on a local port."""
+    def __init__(self, runner, http, base_url, wamp_app):
+        self._runner = runner
+        self._http = http
+        self._base_url = base_url
+        self.wamp_app = wamp_app
+
+    def ws_connect(self, path, **kwargs):
+        return self._http.ws_connect(self._base_url + path, **kwargs)
+
+    async def close(self):
+        await self._http.close()
+        await self._runner.cleanup()
+
+
+async def start_client(handler_results, handler_cancellation, slow_calls=None):
+    # Served as aiohttp servers are, rather than with aiohttp's TestServer,
+    # which always cancels the handlers of clients that disconnect.
+    web_app, wamp_app = build_web_app(
+        handler_results,
+        [] if slow_calls is None else slow_calls
+    )
+    if HANDLER_CANCELLATION_OPTIONAL:
+        runner = web.AppRunner(web_app,
+                               handler_cancellation=handler_cancellation)
+    else:
+        runner = web.AppRunner(web_app)
+    await runner.setup()
+    site = web.TCPSite(runner, '127.0.0.1', 0)
+    await site.start()
+    host, port = runner.addresses[0][:2]
+    return Client(runner, aiohttp.ClientSession(), f'http://{host}:{port}',
+                  wamp_app)
 
 
 def assert_no_aiohttp_errors(caplog):
@@ -77,11 +134,12 @@ def assert_no_aiohttp_errors(caplog):
     [WAMPMsgType.HELLO, 'unknown.realm', {}],
     [WAMPMsgType.CALL, 1, {}, 'say_hello'],
 ))
-def test_handler_returns_websocket_response_after_abort(caplog, first_msg):
+def test_handler_returns_websocket_response_after_abort(caplog, first_msg,
+                                                        handler_cancellation):
     handler_results = []
 
     async def exercise():
-        client = await start_client(handler_results)
+        client = await start_client(handler_results, handler_cancellation)
         try:
             ws = await client.ws_connect('/', protocols=('wamp.2.json',))
             await ws.send_json(first_msg)
@@ -111,8 +169,12 @@ def test_handler_returns_websocket_response_after_abort(caplog, first_msg):
     ('wamp.2.msgpack.batched', b'\x00\x00'),
     ('wamp.2.msgpack.batched', pack_uint32_be(1) + b'\xc1'),
 ))
-def test_malformed_message_aborts(caplog, ws_protocol, payload, in_session):
+def test_malformed_message_aborts(caplog, ws_protocol, payload, in_session,
+                                  handler_cancellation):
     handler_results = []
+    # The client disconnecting cancels the handler during session cleanup, so
+    # it doesn't return.
+    handler_cancelled = in_session and handler_cancellation
     uses_json = ws_protocol.startswith('wamp.2.json')
     batched = ws_protocol.endswith('.batched')
 
@@ -123,7 +185,7 @@ def test_malformed_message_aborts(caplog, ws_protocol, payload, in_session):
         return msgpack.unpackb(msg_bytes[4:] if batched else msg_bytes)
 
     async def exercise():
-        client = await start_client(handler_results)
+        client = await start_client(handler_results, handler_cancellation)
         try:
             ws = await client.ws_connect('/', protocols=(ws_protocol,))
             if in_session:
@@ -150,10 +212,8 @@ def test_malformed_message_aborts(caplog, ws_protocol, payload, in_session):
             assert closing.type in (WSMsgType.CLOSE, WSMsgType.CLOSED)
             await ws.close()
 
-            if in_session:
-                # aiohttp cancels the handler once the client disconnects,
-                # which here lands during session cleanup, so it doesn't
-                # return. Give it time to log any error that escaped instead.
+            if handler_cancelled:
+                # Give it time to log any error that escaped instead.
                 await asyncio.sleep(0.1)
             else:
                 await wait_for_handler(handler_results)
@@ -163,7 +223,7 @@ def test_malformed_message_aborts(caplog, ws_protocol, payload, in_session):
     with caplog.at_level(logging.ERROR, logger='aiohttp'):
         run(exercise())
 
-    if not in_session:
+    if not handler_cancelled:
         assert len(handler_results) == 1
         assert isinstance(handler_results[0], web.WebSocketResponse)
     assert_no_aiohttp_errors(caplog)
@@ -175,9 +235,9 @@ def test_malformed_message_aborts(caplog, ws_protocol, payload, in_session):
     'wamp.2.msgpack',
     'wamp.2.msgpack.batched',
 ))
-def test_session_call_and_goodbye(caplog, ws_protocol):
+def test_session_call_and_goodbye(caplog, ws_protocol, handler_cancellation):
     async def exercise():
-        client = await start_client([])
+        client = await start_client([], handler_cancellation)
         try:
             ws = await client.ws_connect('/', protocols=(ws_protocol,))
             assert ws.protocol == ws_protocol
@@ -265,45 +325,53 @@ def test_send_to_closing_websocket_raises_connection_closed(ws_protocol):
     run(exercise())
 
 
-def test_disconnect_with_rpcs_in_flight(caplog):
+def test_disconnect_with_rpcs_in_flight(caplog, handler_cancellation):
     handler_results = []
+    slow_calls = []
 
     async def exercise():
-        # aiohttp's TestServer cancels handlers when the client disconnects,
-        # but servers don't by default, so RPCs outlive the client.
-        runner = web.AppRunner(build_web_app(handler_results))
-        await runner.setup()
-        site = web.TCPSite(runner, '127.0.0.1', 0)
-        await site.start()
-        host, port = runner.addresses[0][:2]
+        client = await start_client(handler_results, handler_cancellation,
+                                    slow_calls)
         try:
-            async with aiohttp.ClientSession() as http:
-                ws = await http.ws_connect(f'http://{host}:{port}/',
-                                           protocols=('wamp.2.json',))
-                await ws.send_json([WAMPMsgType.HELLO, REALM_URI, {}])
-                welcome = await ws.receive_json()
-                assert welcome[0] == WAMPMsgType.WELCOME
+            ws = await client.ws_connect('/', protocols=('wamp.2.json',))
+            await ws.send_json([WAMPMsgType.HELLO, REALM_URI, {}])
+            welcome = await ws.receive_json()
+            assert welcome[0] == WAMPMsgType.WELCOME
 
-                await ws.send_json([WAMPMsgType.CALL, 1, {}, 'slow'])
-                await ws.send_json([WAMPMsgType.CALL, 2, {}, 'slow'])
-                await asyncio.sleep(0.01)
-                await ws.close()
+            await ws.send_json([WAMPMsgType.CALL, 1, {}, 'slow'])
+            await ws.send_json([WAMPMsgType.CALL, 2, {}, 'slow'])
+            await asyncio.sleep(0.01)
+            await ws.close()
 
-            await wait_for_handler(handler_results)
+            if handler_cancellation:
+                # Cancelling the handler cancels the session's calls.
+                await wait_until(lambda: len(slow_calls) == 2,
+                                 'Calls weren\'t cancelled.')
+            else:
+                await wait_for_handler(handler_results)
+            await wait_until(lambda: not client.wamp_app._active_sessions,
+                             'Session wasn\'t cleaned up.')
         finally:
-            await runner.cleanup()
+            await client.close()
 
     with caplog.at_level(logging.DEBUG):
         run(exercise())
 
-    assert len(handler_results) == 1
     assert not [
         record for record in caplog.records
         if record.levelno >= logging.ERROR
     ]
-    # Both calls ran to completion and found the client gone.
-    assert len([
+    disconnected_replies = [
         record for record in caplog.records
         if record.name == 'serverwamp.session' and 'disconnected' in
         record.getMessage()
-    ]) == 2
+    ]
+    if handler_cancellation:
+        assert not handler_results
+        assert slow_calls == ['cancelled', 'cancelled']
+        assert not disconnected_replies
+    else:
+        assert len(handler_results) == 1
+        # Both calls ran to completion and found the client gone.
+        assert slow_calls == ['finished', 'finished']
+        assert len(disconnected_replies) == 2
