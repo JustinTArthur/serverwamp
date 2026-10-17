@@ -149,3 +149,44 @@ def test_unsubscribe_unknown_subscription():
 
     run(exercise())
     assert topic_events == ['subscribed', 'unsubscribed']
+
+
+def test_duplicate_subscribe_returns_existing_subscription():
+    topic_events = []
+    topic_routes = serverwamp.TopicRouteSet()
+
+    @topic_routes.route('test.topic')
+    async def subscribe(topic_uri):
+        topic_events.append('subscribed')
+        yield
+        topic_events.append('unsubscribed')
+
+    async def exercise():
+        connection = MemoryConnection()
+        realm = serverwamp.Realm(REALM_URI)
+        realm.add_topic_routes(topic_routes)
+        app = serverwamp.Application(allow_default_realm=False)
+        app.add_realm(realm)
+        handling = asyncio.ensure_future(app.handle_connection(connection))
+        connection.inbound.put_nowait([WAMPMsgType.HELLO, REALM_URI, {}])
+        welcome = await connection.receive()
+        assert welcome[0] == WAMPMsgType.WELCOME
+
+        sub_ids = []
+        for request_id in (1, 2):
+            connection.inbound.put_nowait(
+                [WAMPMsgType.SUBSCRIBE, request_id, {}, 'test.topic']
+            )
+            subscribed = await connection.receive()
+            assert subscribed[:2] == (WAMPMsgType.SUBSCRIBED, request_id)
+            sub_ids.append(subscribed[2])
+        assert sub_ids[0] == sub_ids[1]
+
+        # A single UNSUBSCRIBE ends the one subscription.
+        connection.inbound.put_nowait([WAMPMsgType.UNSUBSCRIBE, 3, sub_ids[0]])
+        assert await connection.receive() == (WAMPMsgType.UNSUBSCRIBED, 3)
+        await connection.close()
+        await asyncio.wait_for(handling, TIMEOUT)
+
+    run(exercise())
+    assert topic_events == ['subscribed', 'unsubscribed']

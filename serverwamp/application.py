@@ -489,9 +489,14 @@ class Application:
         request: WAMPSubscribeRequest,
         session: WAMPSession
     ):
-        sub_id = await session.register_subscription(
-            request.topic
-        )
+        sub_id = session.subscription_id_for_topic(request.topic)
+        if sub_id in self._subscription_exits[session]:
+            # Already subscribed. Per the WAMP spec, answer with the existing
+            # subscription rather than starting another.
+            await session.mark_subscribed(request, sub_id)
+            return
+
+        await session.register_subscription(request.topic)
         subscribe_unsubscribe_iter = session.realm.handle_subscription(request.topic, session)
         await subscribe_unsubscribe_iter.__anext__()
         self._subscription_exits[session][sub_id] = subscribe_unsubscribe_iter

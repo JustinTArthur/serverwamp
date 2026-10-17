@@ -15,6 +15,8 @@ subscription for a URI without an exact route went to the first prefix or regex
 route added.
   * Applications relying on this should add a catch-all route such as
     `prefix_route('')` after their other prefix and regex routes.
+* Answer SUBSCRIBE for a topic the session is already subscribed to with the
+existing subscription, without running the subscription handler again.
 
 ## 1.2.0
 * Fix the default realm never being used. Sessions requesting a realm that
