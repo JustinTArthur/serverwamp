@@ -39,23 +39,18 @@ instead of cancelling them.
 * Fix the default realm never being used. Sessions requesting a realm that
 wasn't added with `add_realm` now join the default realm as documented instead
 of being aborted with `wamp.error.no_such_realm`.
-  * Applications that only use explicitly added realms and want other realms
-    rejected should use `Application(allow_default_realm=False)`.
-* Application-level realm configuration methods (e.g. `add_rpc_routes`) raise a
-`RuntimeError` explaining that the default realm is disabled when
-`allow_default_realm=False`, instead of an `AttributeError`.
+  * To reject realms that weren't added, use
+    `Application(allow_default_realm=False)`. Configuring the default realm
+    through the application (e.g. `add_rpc_routes`) then raises a
+    `RuntimeError` instead of an `AttributeError`.
 * Fix single RPC return values (e.g. `return 'hello'`) being sent as the
 result arguments themselves instead of as a single-element argument list.
   * Returning `None` still sends a result without arguments. Return `None,` to
     send `None` as the single argument.
-* Package with pyproject.toml and the hatchling build backend.
-  * CI dependencies are now the `ci` dependency group.
-* Support Python 3.14 and 3.15.
-  * Allow msgpack 1.x releases newer than 1.0 for prebuilt wheels on newer
-    Pythons.
-  * Stop using deprecated `collections.abc.ByteString`.
-* Fix aiohttp request handler not returning its `WebSocketResponse`, which
-made aiohttp log request handling errors when the server ended a connection.
+* Support Python 3.14 and 3.15, and allow msgpack 1.x releases newer than 1.0.
+* Package with pyproject.toml and hatchling.
+* Fix aiohttp logging request handler errors when the server ended a
+connection.
 * Fix `wamp.2.json.batched` sessions being aborted with a protocol error, and
 batched JSON messages containing line breaks being dropped.
 * Fix ASGI `wamp.2.json` sessions failing on the first message sent to the
@@ -64,8 +59,8 @@ client.
 first request after the welcome.
 * Fix messages batched in the same WebSocket message as a client's HELLO being
 dropped.
-* Declare the `serverwamp` package's public names in `__all__` so strict type
-checkers accept `serverwamp.Application` and the other top-level names.
+* Declare public names in `__all__` so strict type checkers accept imports such
+as `serverwamp.Application`.
 
 ## 1.1.2
 * Fix standard library json support.
