@@ -89,10 +89,10 @@ class TopicsRouter(URIsRouter):
     ) -> AsyncIterator[None]:
         procedure = self.resolve(topic_uri)
 
-        handler_args = session.realm.args_for_realm_level_handler(
+        handler_args, handler_kwargs = session.realm.args_for_realm_level_handler(
             procedure, topic_uri=topic_uri, session=session
         )
-        handler_invocation = procedure(*handler_args)
+        handler_invocation = procedure(*handler_args, **handler_kwargs)
         if not isinstance(handler_invocation, AsyncIterator):
             """TODO: raise error"""
             return

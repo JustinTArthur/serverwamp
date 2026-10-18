@@ -7,6 +7,10 @@ session's lifespan rather than handling its state.
 `Realm.authed_session_state_handlers` are now `session_lifespans` and
 `authed_session_lifespans`, and `serverwamp.application.SessionStateHandler`
 is now `SessionLifespan`. The old names still work but are deprecated.
+* Fix session lifespans and subscription handlers getting arguments in the
+wrong parameters when one parameter isn't `session`, `topic_uri` or a default
+arg. Such a parameter now keeps its default value, or raises `TypeError` if it
+has none.
 * Require Python 3.11 or newer. `serverwamp.context`, a backport of
 `contextlib.asynccontextmanager` for older Pythons, is removed.
 * Build the asyncio support on `asyncio.TaskGroup`. As with Trio and AnyIO,

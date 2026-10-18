@@ -200,19 +200,44 @@ class Realm:
         self._topic_router.add_routes(routes)
 
     def args_for_realm_level_handler(self, handler, **special_params):
-        """Used internally by a serverwamp application to determine what args
-        to call a configured handler with (e.g. session lifespan)
+        """Used internally by a serverwamp application to determine the args
+        and kwargs to call a configured handler with (e.g. session lifespan).
+
+        Raises TypeError for a parameter that isn't a special param or default
+        arg and has no default value.
         """
         handler_args = []
-        for name in inspect.signature(handler).parameters.keys():
-            if name in special_params:
-                handler_args.append(special_params[name])
+        handler_kwargs = {}
+        skipped_positional_only = False
+        for name, param in inspect.signature(handler).parameters.items():
+            if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
                 continue
+            if name in special_params:
+                value = special_params[name]
             elif name in self._default_arg_factories:
-                handler_args.append(self._default_arg_factories[name]())
+                value = self._default_arg_factories[name]()
+            elif param.default is not param.empty:
+                if param.kind is param.POSITIONAL_ONLY:
+                    skipped_positional_only = True
+                continue
             else:
-                """TODO: Raise error to client."""
-        return handler_args
+                raise TypeError(
+                    f'No value for parameter {name!r} of {handler!r}. It '
+                    f'needs a default value, or a default arg of that name '
+                    f'set with set_default_arg().'
+                )
+
+            if param.kind is not param.POSITIONAL_ONLY:
+                handler_kwargs[name] = value
+            elif skipped_positional_only:
+                raise TypeError(
+                    f'No value for positional-only parameter {name!r} of '
+                    f'{handler!r} can be given, as it follows one left to '
+                    f'its default value.'
+                )
+            else:
+                handler_args.append(value)
+        return handler_args, handler_kwargs
 
     async def default_auth_handler(self, session):
         if not (
@@ -576,11 +601,11 @@ class Application:
     async def _start_session_lifespans(self, lifespans, session):
         async with self._async_support.launch_task_group() as start_tasks:
             for lifespan in lifespans:
-                args = session.realm.args_for_realm_level_handler(
+                args, kwargs = session.realm.args_for_realm_level_handler(
                     lifespan,
                     session=session
                 )
-                lifespan_iter = lifespan(*args)
+                lifespan_iter = lifespan(*args, **kwargs)
                 await start_tasks.spawn(advance, lifespan_iter)
                 self._session_lifespan_exits[session].add(lifespan_iter)
 

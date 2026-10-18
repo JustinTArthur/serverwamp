@@ -121,3 +121,74 @@ def test_deprecated_session_state_handler_names():
     with pytest.warns(DeprecationWarning, match='SessionLifespan'):
         from serverwamp.application import SessionStateHandler
     assert SessionStateHandler is serverwamp.application.SessionLifespan
+
+
+def realm_with_default_arg():
+    realm = serverwamp.Realm('test.realm')
+    realm.set_default_arg('metrics', 'the metrics')
+    return realm
+
+
+def test_realm_level_handler_args_given_by_name():
+    async def lifespan(metrics, session):
+        yield
+
+    args = realm_with_default_arg().args_for_realm_level_handler(lifespan, session='the session')
+    assert args == ([], {'metrics': 'the metrics', 'session': 'the session'})
+
+
+def test_realm_level_handler_args_skip_unknown_params_with_defaults():
+    async def lifespan(unknown='own default', session=None, *args, **kwargs):
+        yield
+
+    args = realm_with_default_arg().args_for_realm_level_handler(lifespan, session='the session')
+    assert args == ([], {'session': 'the session'})
+
+
+def test_realm_level_handler_args_reject_unknown_params():
+    async def lifespan(unknown, session):
+        yield
+
+    with pytest.raises(TypeError, match="'unknown'"):
+        realm_with_default_arg().args_for_realm_level_handler(lifespan, session='the session')
+
+
+def test_realm_level_handler_args_positional_only():
+    async def lifespan(metrics, /, session):
+        yield
+
+    args = realm_with_default_arg().args_for_realm_level_handler(lifespan, session='the session')
+    assert args == (['the metrics'], {'session': 'the session'})
+
+    async def gapped_lifespan(unknown=None, session=None, /):
+        yield
+
+    with pytest.raises(TypeError, match="'session'"):
+        realm_with_default_arg().args_for_realm_level_handler(
+            gapped_lifespan, session='the session'
+        )
+
+
+def test_subscription_handler_args_given_by_name():
+    received = []
+    topics = serverwamp.TopicRouteSet()
+
+    @topics.route('test.topic')
+    async def subscription(unknown=None, topic_uri=None, metrics=None):
+        received.append((unknown, topic_uri, metrics))
+        yield
+
+    app = serverwamp.Application()
+    app.set_default_arg('metrics', 'the metrics')
+    app.add_topic_routes(topics)
+
+    async def exercise():
+        connection, handling, welcome = await say_hello(app, 'test.realm')
+        assert welcome[0] == WAMPMsgType.WELCOME
+        connection.inbound.put_nowait([WAMPMsgType.SUBSCRIBE, 1, {}, 'test.topic'])
+        assert (await connection.receive())[0] == WAMPMsgType.SUBSCRIBED
+        await connection.close()
+        await asyncio.wait_for(handling, TIMEOUT)
+
+    run(exercise())
+    assert received == [(None, 'test.topic', 'the metrics')]

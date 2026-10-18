@@ -218,9 +218,13 @@ in response to external event (from a message broker for example).
 
 To keep track of what sessions have subscribed to a topic, you can register a
 function to be called when a session subscribes to a topic. The function should
-return an asynchronous iterator whose first part is the behavior when the
+return an asynchronous iterator, and is most easily written as an asynchronous
+generator function. The iterator's first part is the behavior when the
 subscription is established and second part is behavior for when the
-subscription is torn down or the session is closed.
+subscription is torn down or the session is closed. The function's arguments
+are filled in by name: ``session`` gets the subscribing session, ``topic_uri``
+gets the URI subscribed to, and others get default arguments set with
+``set_default_arg()``.
 
 .. code-block:: python
 
