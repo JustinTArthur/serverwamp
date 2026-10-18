@@ -9,6 +9,16 @@ from serverwamp.session import WAMPSession
 SubscriptionHandler = Callable[[str, WAMPSession], AsyncIterator[Any]]
 
 
+class SubscribeError(Exception):
+    """Raised by a subscription handler before its yield to answer the
+    SUBSCRIBE with an ERROR of the given URI, such as
+    wamp.error.not_authorized.
+    """
+    def __init__(self, error_uri: str):
+        super().__init__(error_uri)
+        self.error_uri = error_uri
+
+
 class TopicRouteSet(Sequence):
     """Table of subscription handlers for WAMP topics."""
     def __init__(self):

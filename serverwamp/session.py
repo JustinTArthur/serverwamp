@@ -70,6 +70,7 @@ class WAMPSession:
         self._ended = False
         self._subscriptions: dict[str, int] = {}
         self._subscriptions_ids: dict[int, str] = {}
+        self._held_events: dict[int, list[Iterable]] = {}
         self._tasks = tasks
         self._authenticated = False
 
@@ -128,6 +129,11 @@ class WAMPSession:
             kwargs=kwargs,
             trust_level=trust_level
         )
+        held_events = self._held_events.get(subscription_id)
+        if held_events is not None and not self._ended:
+            # Clients reject events for a subscription before its SUBSCRIBED.
+            held_events.append(msg)
+            return
         await self._send_msg(msg)
 
     async def request_ticket_authentication(self):
@@ -144,21 +150,39 @@ class WAMPSession:
         await self._send_msg(cra_challenge_msg(challenge_string))
 
     async def register_subscription(self, topic_uri: str) -> int:
+        """Adds a subscription. Outbound events are held until it's marked
+        subscribed.
+        """
         sub_id = self.subscription_id_for_topic(topic_uri)
         self._subscriptions[topic_uri] = sub_id
         self._subscriptions_ids[sub_id] = topic_uri
+        self._held_events[sub_id] = []
         return sub_id
 
     async def unregister_subscription(self, sub_id: int):
+        self._held_events.pop(sub_id, None)
         topic_uri = self._subscriptions_ids.pop(sub_id, None)
         if not topic_uri:
             raise NoSuchSubscription()
         del self._subscriptions[topic_uri]
 
     async def mark_subscribed(self, request, subscription_id: int):
+        """Sends SUBSCRIBED, then the subscription's events that were held
+        until it.
+        """
         await self._send_msg(
             subscribed_response_msg(request, subscription_id)
         )
+        held_events = self._held_events.get(subscription_id)
+        if held_events is None:
+            return
+        try:
+            i = 0
+            while i < len(held_events):
+                await self._send_msg(held_events[i])
+                i += 1
+        finally:
+            self._held_events.pop(subscription_id, None)
 
     async def mark_unsubscribed(self, request):
         await self._send_msg(

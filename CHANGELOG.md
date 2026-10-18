@@ -12,6 +12,10 @@ handler fails with a `TypeError` naming it.
 sessions whose session lifespan handlers fail to start with that reason,
 instead of failing the connection without a reply. Errors are logged, and no
 longer stop other teardown.
+* Send events for a subscription only after its SUBSCRIBED. Events sent while
+its handler runs, such as a first event from the handler, are held until then.
+* Add `serverwamp.SubscribeError` for subscription handlers to raise to answer
+a SUBSCRIBE with an error, such as `wamp.error.not_authorized`.
 * Require Python 3.11 or newer. `serverwamp.context`, a backport of
 `contextlib.asynccontextmanager` for older Pythons, is removed.
 * Build the asyncio support on `asyncio.TaskGroup`. As with Trio and AnyIO,

@@ -226,11 +226,6 @@ are filled in by name: ``session`` gets the subscribing session, ``topic_uri``
 gets the URI subscribed to, and others get default arguments set with
 ``set_default_arg()``.
 
-If the function raises an exception before its ``yield``, the exception is
-logged and the client's subscribe request is answered with a
-``wamp.error.runtime_error`` error. Exceptions after the ``yield`` are logged,
-and the subscription still ends.
-
 .. code-block:: python
 
     events = serverwamp.TopicRouteSet()
@@ -262,6 +257,31 @@ and the subscription still ends.
     app.set_default_arg('my_subscribers', my_subscribers)
 
     asyncio.create_task(run_hourly_updates())
+
+Events sent for a subscription before the function's ``yield``, by the function
+or by other code, are held until the client has been told it's subscribed. The
+function can use this to send a subscriber the current state straight away.
+``send_event()`` returns as soon as such an event is held, before it's sent.
+
+To turn a subscription down, raise ``serverwamp.SubscribeError`` with an error
+URI before the ``yield``. The client's subscribe request is answered with that
+error, and the code after the ``yield`` doesn't run. Other exceptions raised
+before the ``yield`` are logged and answered with a ``wamp.error.runtime_error``
+error. Exceptions after the ``yield`` are logged, and the subscription still
+ends.
+
+.. code-block:: python
+
+    @events.route('prices.acme')
+    async def watch_acme_price(session, topic_uri, price_feed):
+        # The identity is what the realm's authenticator gave the session.
+        if 'prices' not in session.identity.scopes:
+            raise serverwamp.SubscribeError('wamp.error.not_authorized')
+
+        # Sent once the client knows it's subscribed.
+        await session.send_event(topic_uri, args=(price_feed.latest('ACME'),))
+
+        yield
 
 Serving Connections
 -------------------

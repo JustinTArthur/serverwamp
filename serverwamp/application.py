@@ -19,7 +19,7 @@ from typing import Any
 
 from serverwamp.adapters.async_base import AsyncSupport
 from serverwamp.connection import ConnectionClosed
-from serverwamp.events import SubscriptionHandler, TopicsRouter
+from serverwamp.events import SubscribeError, SubscriptionHandler, TopicsRouter
 from serverwamp.protocol import (
     WAMPGoodbyeRequest,
     WAMPHelloRequest,
@@ -658,6 +658,9 @@ class Application:
         except NoSuchRouteError:
             # Only topics the application routes can be subscribed to.
             error_uri = 'wamp.error.invalid_uri'
+        except SubscribeError as e:
+            # The handler turned the subscription down.
+            error_uri = e.error_uri
         except Exception:
             logger.exception('Exception from subscription handler for topic '
                              '%s', request.topic)
