@@ -226,6 +226,11 @@ are filled in by name: ``session`` gets the subscribing session, ``topic_uri``
 gets the URI subscribed to, and others get default arguments set with
 ``set_default_arg()``.
 
+If the function raises an exception before its ``yield``, the exception is
+logged and the client's subscribe request is answered with a
+``wamp.error.runtime_error`` error. Exceptions after the ``yield`` are logged,
+and the subscription still ends.
+
 .. code-block:: python
 
     events = serverwamp.TopicRouteSet()

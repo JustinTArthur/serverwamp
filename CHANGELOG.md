@@ -12,6 +12,15 @@ The old names still work but are deprecated.
 the wrong parameters when one parameter isn't `session`, `topic_uri` or a
 default arg. Such a parameter now keeps its default value, or raises
 `TypeError` if it has none.
+* Handle errors from subscription and session lifespan handlers instead of
+failing the connection without a reply. All are logged.
+  * A subscription handler raising before its `yield` answers the SUBSCRIBE
+    with `wamp.error.runtime_error`, and the session carries on.
+  * A session lifespan handler raising before its `yield`, or not yielding,
+    ends the session with `wamp.error.runtime_error`: with ABORT before
+    WELCOME, or GOODBYE after. The other lifespan handlers that started are
+    torn down.
+  * Errors after the `yield` no longer stop the session's other teardown.
 * Require Python 3.11 or newer. `serverwamp.context`, a backport of
 `contextlib.asynccontextmanager` for older Pythons, is removed.
 * Build the asyncio support on `asyncio.TaskGroup`. As with Trio and AnyIO,

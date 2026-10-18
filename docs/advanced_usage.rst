@@ -81,6 +81,12 @@ first iteration as soon as the session starts, before it's authenticated, pass
 Just like RPC and subscription route handlers, the session lifespan handler can
 receive default arguments from the application realm.
 
+If a session lifespan handler raises before its ``yield``, or ends without
+yielding, the error is logged and the session is ended with
+``wamp.error.runtime_error``. Other lifespan handlers that started are still
+torn down. Errors after the ``yield`` are logged, and the rest of the teardown
+still runs.
+
 Session Data
 ^^^^^^^^^^^^
 

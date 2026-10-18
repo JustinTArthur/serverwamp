@@ -292,11 +292,21 @@ async def abort_on_malformed_msgs(msgs, connection):
         await connection.abort('wamp.error.protocol_violation', 'Parse error.')
 
 
-async def advance(async_iter):
-    """Awaits an async iterator's next item from a coroutine, as some async
-    supports only spawn coroutines, not other awaitables like __anext__()'s.
+async def tear_down_handler(handler_iter, description, session):
+    """Runs the rest of a subscription or session lifespan handler, after its
+    yield, logging its errors instead of raising them so that other teardown
+    still runs.
     """
-    await async_iter.__anext__()
+    try:
+        await handler_iter.__anext__()
+    except StopAsyncIteration:
+        return
+    except Exception:
+        logger.exception('Exception tearing down %s %s for session %s.',
+                         description, handler_iter, session.id)
+        return
+    logger.error('The %s %s for session %s yielded more than once.',
+                 description, handler_iter, session.id)
 
 
 @dataclass
@@ -358,21 +368,26 @@ class Application:
         connection = session.connection
         realm: Realm = session.realm
 
-        if realm.session_lifespan_handlers:
-            await self._start_session_lifespan_handlers(
-                realm.session_lifespan_handlers,
-                session
-            )
+        # A session whose lifespan handlers didn't all start is ended, as the
+        # rest of the app may rely on what they set up.
+        if not await self._start_session_lifespan_handlers(
+            realm.session_lifespan_handlers,
+            session
+        ):
+            await session.abort('wamp.error.runtime_error')
+            return False
 
         await realm.authenticate_session(session)
         if not session.is_open:
             return False
 
-        if realm.authed_session_lifespan_handlers:
-            await self._start_session_lifespan_handlers(
-                realm.authed_session_lifespan_handlers,
-                session
-            )
+        if not await self._start_session_lifespan_handlers(
+            realm.authed_session_lifespan_handlers,
+            session
+        ):
+            # Messages other than the client's GOODBYE in reply are then
+            # ignored.
+            await session.close('wamp.error.runtime_error')
 
         if msgs is None:
             msgs = abort_on_malformed_msgs(connection.iterate_msgs(),
@@ -502,31 +517,14 @@ class Application:
         self._active_sessions.discard(session)
         subscription_exits = self._subscription_exits.pop(session, {})
         for subscribe_unsubscribe_iter in subscription_exits.values():
-            try:
-                await subscribe_unsubscribe_iter.__anext__()
-            except StopAsyncIteration:
-                pass
-            else:
-                logger.error(
-                    'Subscription manager %s for session %s has more than two '
-                    'iterations or more than one yield.',
-                    subscribe_unsubscribe_iter, session.id
-                )
+            await tear_down_handler(subscribe_unsubscribe_iter,
+                                    'subscription handler', session)
 
         lifespan_iters = self._session_lifespan_exits.pop(session, EMPTY_SET)
-        if lifespan_iters:
-            # TODO, make exits concurrent
-            for lifespan_iter in lifespan_iters:
-                try:
-                    await lifespan_iter.__anext__()
-                except StopAsyncIteration:
-                    pass
-                else:
-                    logger.error(
-                        'Session lifespan handler %s for session %s has more than '
-                        'two iterations or more than one yield.',
-                        lifespan_iter, session.id
-                    )
+        # TODO, make exits concurrent
+        for lifespan_iter in lifespan_iters:
+            await tear_down_handler(lifespan_iter, 'session lifespan handler',
+                                    session)
 
     # Default Realm Configuration…
     @property
@@ -603,16 +601,40 @@ class Application:
     def add_topic_routes(self, routes):
         self._enabled_default_realm.add_topic_routes(routes)
 
-    async def _start_session_lifespan_handlers(self, handlers, session):
-        async with self._async_support.launch_task_group() as start_tasks:
-            for handler in handlers:
+    async def _start_session_lifespan_handlers(self, handlers, session) -> bool:
+        """Runs session lifespan handlers to their yield, returning whether
+        they all got there. Their errors are logged, and the handlers that
+        started are torn down when the session is cleaned up.
+        """
+        if not handlers:
+            return True
+        all_started = True
+
+        async def start(handler):
+            nonlocal all_started
+            try:
                 args, kwargs = session.realm._args_for_realm_level_handler(
                     handler,
                     session=session
                 )
                 lifespan_iter = handler(*args, **kwargs)
-                await start_tasks.spawn(advance, lifespan_iter)
+                await lifespan_iter.__anext__()
+            except StopAsyncIteration:
+                all_started = False
+                logger.error('Session lifespan handler %s for session %s '
+                             'ended without yielding.', handler, session.id)
+            except Exception:
+                all_started = False
+                logger.exception('Exception starting session lifespan '
+                                 'handler %s for session %s.',
+                                 handler, session.id)
+            else:
                 self._session_lifespan_exits[session].add(lifespan_iter)
+
+        async with self._async_support.launch_task_group() as start_tasks:
+            for handler in handlers:
+                await start_tasks.spawn(start, handler)
+        return all_started
 
     async def default_protocol_subscribe_handler(
         self,
@@ -627,18 +649,25 @@ class Application:
             return
 
         await session.register_subscription(request.topic)
-        subscribe_unsubscribe_iter = session.realm.handle_subscription(request.topic, session)
         try:
+            subscribe_unsubscribe_iter = session.realm.handle_subscription(
+                request.topic,
+                session
+            )
             await subscribe_unsubscribe_iter.__anext__()
         except NoSuchRouteError:
             # Only topics the application routes can be subscribed to.
-            await session.unregister_subscription(sub_id)
-            await session.send_raw(
-                subscribe_error_response_msg(request, 'wamp.error.invalid_uri')
-            )
+            error_uri = 'wamp.error.invalid_uri'
+        except Exception:
+            logger.exception('Exception from subscription handler for topic '
+                             '%s', request.topic)
+            error_uri = 'wamp.error.runtime_error'
+        else:
+            self._subscription_exits[session][sub_id] = subscribe_unsubscribe_iter
+            await session.mark_subscribed(request, sub_id)
             return
-        self._subscription_exits[session][sub_id] = subscribe_unsubscribe_iter
-        await session.mark_subscribed(request, sub_id)
+        await session.unregister_subscription(sub_id)
+        await session.send_raw(subscribe_error_response_msg(request, error_uri))
 
     async def default_protocol_unsubscribe_handler(
         self,
@@ -650,14 +679,9 @@ class Application:
             None
         )
         if subscribe_unsubscribe_iter:
-            try:
-                await subscribe_unsubscribe_iter.__anext__()
-            except StopAsyncIteration:
-                pass
-            else:
-                logger.error('Unsubscribe iterator %s had more than two '
-                             'iterations, such as from more than one yield '
-                             'statement.', subscribe_unsubscribe_iter)
+            # The subscription ends even if its teardown fails.
+            await tear_down_handler(subscribe_unsubscribe_iter,
+                                    'subscription handler', session)
         try:
             await session.unregister_subscription(request.subscription)
         except NoSuchSubscription:
