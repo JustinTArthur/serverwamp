@@ -12,7 +12,7 @@ POSITIONAL_PARAM_KINDS = frozenset({
     inspect.Parameter.POSITIONAL_ONLY,
     inspect.Parameter.POSITIONAL_OR_KEYWORD
 })
-PARAM_PASSTHROUGH_TYPES = frozenset({str, inspect.Parameter.empty})
+PARAM_PASSTHROUGH_TYPES = frozenset({str, Any, inspect.Parameter.empty})
 
 SIMPLE_VALUE_TYPES = (str, bytes, bytearray, memoryview, int, float, bool)
 
@@ -80,35 +80,39 @@ class RPCRouter(URIsRouter):
         params = inspect.signature(procedure).parameters
         var_kwargs_param = None
 
-        for name, param in params.items():
-            if param.kind is param.VAR_POSITIONAL:
-                # Gets the request's args that no other param took.
-                call_args.extend(
-                    _coerced(value, param.annotation)
-                    for value in request_arg_values
-                )
-                continue
-            if param.kind is param.VAR_KEYWORD:
-                var_kwargs_param = param
-                continue
+        try:
+            for name, param in params.items():
+                if param.kind is param.VAR_POSITIONAL:
+                    # Gets the request's args that no other param took.
+                    call_args.extend(
+                        _converted(name, value, param.annotation)
+                        for value in request_arg_values
+                    )
+                    continue
+                if param.kind is param.VAR_KEYWORD:
+                    var_kwargs_param = param
+                    continue
 
-            # Values the server provides are never taken from the request.
-            if name in special_params:
-                value = special_params[name]
-            elif name in self.default_arg_factories:
-                value = self.default_arg_factories[name]()
-            else:
-                value_found = False
-                if param.kind in POSITIONAL_PARAM_KINDS:
-                    try:
-                        value = next(request_arg_values)
-                    except StopIteration:
-                        pass
-                    else:
-                        value_found = True
-                if not value_found:
-                    if name in request_kwargs:
+                # Values the server provides are never taken from the request.
+                if name in special_params:
+                    value = special_params[name]
+                elif name in self.default_arg_factories:
+                    value = self.default_arg_factories[name]()
+                else:
+                    value_found = False
+                    if param.kind in POSITIONAL_PARAM_KINDS:
+                        try:
+                            value = next(request_arg_values)
+                        except StopIteration:
+                            pass
+                        else:
+                            value_found = True
+                    if not value_found and name in request_kwargs:
                         value = request_kwargs.pop(name)
+                        value_found = True
+
+                    if value_found:
+                        value = _converted(name, value, param.annotation)
                     elif param.default is not param.empty:
                         value = param.default
                     else:
@@ -117,20 +121,25 @@ class RPCRouter(URIsRouter):
                             kwargs={'message': f'Argument {name} required.'}
                         )
                         return
-                value = _coerced(value, param.annotation)
 
-            if param.kind is param.KEYWORD_ONLY:
-                call_kwargs[name] = value
-            else:
-                call_args.append(value)
+                if param.kind is param.KEYWORD_ONLY:
+                    call_kwargs[name] = value
+                else:
+                    call_args.append(value)
 
-        if var_kwargs_param:
-            # Gets the request's kwargs that aren't named for another param.
-            call_kwargs.update(
-                (name, _coerced(value, var_kwargs_param.annotation))
-                for name, value in request_kwargs.items()
-                if name not in params
+            if var_kwargs_param:
+                # Gets the request's kwargs that aren't named for another param.
+                call_kwargs.update(
+                    (name, _converted(name, value, var_kwargs_param.annotation))
+                    for name, value in request_kwargs.items()
+                    if name not in params
+                )
+        except _InvalidArgument as e:
+            yield RPCErrorResult(
+                error_uri='wamp.error.invalid_argument',
+                kwargs={'message': str(e)}
             )
+            return
 
         procedure_invocation = procedure(*call_args, **call_kwargs)
         if isinstance(procedure_invocation, AsyncIterator):
@@ -238,11 +247,24 @@ RPCHandler = Callable[
 ]
 
 
-def _coerced(value, annotation):
-    """Converts a value from a request to a handler param's annotated type."""
-    if annotation in PARAM_PASSTHROUGH_TYPES or isinstance(value, annotation):
+class _InvalidArgument(Exception):
+    pass
+
+
+def _converted(name, value, annotation):
+    """Converts a value from a request to a handler param's annotated type if
+    it's a class, raising _InvalidArgument if the value can't be.
+    """
+    if (not isinstance(annotation, type)
+            or annotation in PARAM_PASSTHROUGH_TYPES
+            or isinstance(value, annotation)):
         return value
-    return annotation(value)
+    try:
+        return annotation(value)
+    except (TypeError, ValueError) as e:
+        raise _InvalidArgument(
+            f'Argument {name} is not a valid {annotation.__name__}.'
+        ) from e
 
 
 def _yielded_value_to_result(yielded_value):

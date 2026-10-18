@@ -76,6 +76,11 @@ accepted them with `wamp.2.msgpack.batched`, which the client hadn't offered.
     and `**kwargs` now get the call's leftover arguments.
   * Callers could override default args. Parameters named for a default arg
     now always get its value.
+* Answer RPC arguments that can't be converted to their parameter's annotated
+type with `wamp.error.invalid_argument`, per WAMP spec, instead of
+`wamp.error.runtime_error`. Only class annotations are converted to, so
+parameters annotated like `int | None` get arguments as they are instead of
+failing, and parameters' own default values are no longer converted.
 
 ## 1.2.0
 * Fix the default realm never being used. Sessions requesting a realm that
