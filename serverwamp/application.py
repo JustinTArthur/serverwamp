@@ -199,7 +199,7 @@ class Realm:
     def add_topic_routes(self, routes):
         self._topic_router.add_routes(routes)
 
-    def args_for_realm_level_handler(self, handler, **special_params):
+    def _args_for_realm_level_handler(self, handler, **special_params):
         """Used internally by a serverwamp application to determine the args
         and kwargs to call a configured handler with (e.g. session lifespan).
 
@@ -601,7 +601,7 @@ class Application:
     async def _start_session_lifespans(self, lifespans, session):
         async with self._async_support.launch_task_group() as start_tasks:
             for lifespan in lifespans:
-                args, kwargs = session.realm.args_for_realm_level_handler(
+                args, kwargs = session.realm._args_for_realm_level_handler(
                     lifespan,
                     session=session
                 )

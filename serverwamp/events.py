@@ -89,7 +89,7 @@ class TopicsRouter(URIsRouter):
     ) -> AsyncIterator[None]:
         procedure = self.resolve(topic_uri)
 
-        handler_args, handler_kwargs = session.realm.args_for_realm_level_handler(
+        handler_args, handler_kwargs = session.realm._args_for_realm_level_handler(
             procedure, topic_uri=topic_uri, session=session
         )
         handler_invocation = procedure(*handler_args, **handler_kwargs)

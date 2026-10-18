@@ -133,7 +133,7 @@ def test_realm_level_handler_args_given_by_name():
     async def lifespan(metrics, session):
         yield
 
-    args = realm_with_default_arg().args_for_realm_level_handler(lifespan, session='the session')
+    args = realm_with_default_arg()._args_for_realm_level_handler(lifespan, session='the session')
     assert args == ([], {'metrics': 'the metrics', 'session': 'the session'})
 
 
@@ -141,7 +141,7 @@ def test_realm_level_handler_args_skip_unknown_params_with_defaults():
     async def lifespan(unknown='own default', session=None, *args, **kwargs):
         yield
 
-    args = realm_with_default_arg().args_for_realm_level_handler(lifespan, session='the session')
+    args = realm_with_default_arg()._args_for_realm_level_handler(lifespan, session='the session')
     assert args == ([], {'session': 'the session'})
 
 
@@ -150,21 +150,21 @@ def test_realm_level_handler_args_reject_unknown_params():
         yield
 
     with pytest.raises(TypeError, match="'unknown'"):
-        realm_with_default_arg().args_for_realm_level_handler(lifespan, session='the session')
+        realm_with_default_arg()._args_for_realm_level_handler(lifespan, session='the session')
 
 
 def test_realm_level_handler_args_positional_only():
     async def lifespan(metrics, /, session):
         yield
 
-    args = realm_with_default_arg().args_for_realm_level_handler(lifespan, session='the session')
+    args = realm_with_default_arg()._args_for_realm_level_handler(lifespan, session='the session')
     assert args == (['the metrics'], {'session': 'the session'})
 
     async def gapped_lifespan(unknown=None, session=None, /):
         yield
 
     with pytest.raises(TypeError, match="'session'"):
-        realm_with_default_arg().args_for_realm_level_handler(
+        realm_with_default_arg()._args_for_realm_level_handler(
             gapped_lifespan, session='the session'
         )
 
