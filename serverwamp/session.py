@@ -65,7 +65,7 @@ class WAMPSession:
         self.realm = realm
         self.identity = NO_IDENTITY
 
-        self._custom_state: dict[str, Any] = {}
+        self._data: dict[str, Any] = {}
         self._said_goodbye = False
         self._ended = False
         self._subscriptions: dict[str, int] = {}
@@ -74,19 +74,19 @@ class WAMPSession:
         self._authenticated = False
 
     def __getitem__(self, key: str) -> Any:
-        return self._custom_state[key]
+        return self._data[key]
 
     def __setitem__(self, key: str, value: Any) -> None:
-        self._custom_state[key] = value
+        self._data[key] = value
 
     def __delitem__(self, key: str) -> None:
-        del self._custom_state[key]
+        del self._data[key]
 
     def __len__(self) -> int:
-        return len(self._custom_state)
+        return len(self._data)
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._custom_state)
+        return iter(self._data)
 
     async def spawn_task(self, fn, *fn_args, **fn_kwargs):
         await self._tasks.spawn(self._run_task, fn, *fn_args, **fn_kwargs)
