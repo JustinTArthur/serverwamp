@@ -75,41 +75,60 @@ class RPCRouter(URIsRouter):
         }
 
         request_arg_values = iter(rpc_request.args)
-        call_args = []
-        call_kwargs: Mapping[Any, Any] = {}  # TODO: populate for kwarg-onlies
+        call_args: list[Any] = []
+        call_kwargs: dict[str, Any] = {}
+        params = inspect.signature(procedure).parameters
+        var_kwargs_param = None
 
-        for name, param in inspect.signature(procedure).parameters.items():
-            is_passthrough = param.annotation in PARAM_PASSTHROUGH_TYPES
-
-            if name in special_params:
-                call_args.append(special_params[name])
+        for name, param in params.items():
+            if param.kind is param.VAR_POSITIONAL:
+                # Gets the request's args that no other param took.
+                call_args.extend(
+                    _coerced(value, param.annotation)
+                    for value in request_arg_values
+                )
+                continue
+            if param.kind is param.VAR_KEYWORD:
+                var_kwargs_param = param
                 continue
 
-            value_found = False
-            if param.kind in POSITIONAL_PARAM_KINDS:
-                try:
-                    value = next(request_arg_values)
-                except StopIteration:
-                    pass
-                else:
-                    value_found = True
-            if not value_found:
-                if name in request_kwargs:
-                    value = request_kwargs.pop(name)
-                elif name in self.default_arg_factories:
-                    value = self.default_arg_factories[name]()
-                elif param.default is not param.empty:
-                    value = param.default
-                else:
-                    yield RPCErrorResult(
-                        error_uri='wamp.error.invalid_argument',
-                        kwargs={'message': f'Argument {name} required.'}
-                    )
-                    return
-            call_args.append(
-                value
-                if is_passthrough or isinstance(value, param.annotation)
-                else param.annotation(value)
+            if name in special_params:
+                value = special_params[name]
+            else:
+                value_found = False
+                if param.kind in POSITIONAL_PARAM_KINDS:
+                    try:
+                        value = next(request_arg_values)
+                    except StopIteration:
+                        pass
+                    else:
+                        value_found = True
+                if not value_found:
+                    if name in request_kwargs:
+                        value = request_kwargs.pop(name)
+                    elif name in self.default_arg_factories:
+                        value = self.default_arg_factories[name]()
+                    elif param.default is not param.empty:
+                        value = param.default
+                    else:
+                        yield RPCErrorResult(
+                            error_uri='wamp.error.invalid_argument',
+                            kwargs={'message': f'Argument {name} required.'}
+                        )
+                        return
+                value = _coerced(value, param.annotation)
+
+            if param.kind is param.KEYWORD_ONLY:
+                call_kwargs[name] = value
+            else:
+                call_args.append(value)
+
+        if var_kwargs_param:
+            # Gets the request's kwargs that aren't named for another param.
+            call_kwargs.update(
+                (name, _coerced(value, var_kwargs_param.annotation))
+                for name, value in request_kwargs.items()
+                if name not in params
             )
 
         procedure_invocation = procedure(*call_args, **call_kwargs)
@@ -216,6 +235,13 @@ RPCHandler = Callable[
     Awaitable[RPCResult | RPCErrorResult]
     | AsyncIterator[RPCProgressReport | RPCResult | RPCErrorResult]
 ]
+
+
+def _coerced(value, annotation):
+    """Converts a value from a request to a handler param's annotated type."""
+    if annotation in PARAM_PASSTHROUGH_TYPES or isinstance(value, annotation):
+        return value
+    return annotation(value)
 
 
 def _yielded_value_to_result(yielded_value):

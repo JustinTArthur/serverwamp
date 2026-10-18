@@ -69,8 +69,11 @@ directly.
 subprotocols, with 400 Bad Request with aiohttp and 403 Forbidden from ASGI
 servers. aiohttp upgraded them and then failed in the request handler, and ASGI
 accepted them with `wamp.2.msgpack.batched`, which the client hadn't offered.
-* Fix RPC handlers given to `set_rpc_handler()` failing on every call unless
-their parameter was named `rpc_request`.
+* Fix how RPC handlers' parameters are filled:
+  * Handlers given to `set_rpc_handler()` failed on every call unless their
+    parameter was named `rpc_request`.
+  * Route handlers with keyword-only parameters failed on every call. `*args`
+    and `**kwargs` now get the call's leftover arguments.
 
 ## 1.2.0
 * Fix the default realm never being used. Sessions requesting a realm that
