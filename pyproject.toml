@@ -78,7 +78,7 @@ known-local-folder = ["memory_connection", "stream_connection"]
 [tool.hatch.build.targets.sdist]
 include = [
     "/serverwamp",
-    "/CHANGELOG.md",
+    "/docs/changelog.rst",
     "/LICENSE.md",
     "/README.md",
 ]
