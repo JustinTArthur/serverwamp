@@ -54,12 +54,12 @@ Session Open and Close
 ^^^^^^^^^^^^^^^^^^^^^^
 
 Custom behavior can be run when a session is opened or closed by adding session
-lifespans to the application with ``add_session_lifespan()``. A session
-lifespan returns an asynchronous iterator, and is most easily written as an
-asynchronous generator function. Its first iteration is run when a session is
-authenticated and the next when the session is closed. To run the first
-iteration as soon as the session starts, before it's authenticated, pass
-``authenticated_only=False`` to ``add_session_lifespan()``.
+lifespan handlers to the application with ``add_session_lifespan_handler()``.
+A session lifespan handler returns an asynchronous iterator, and is most easily
+written as an asynchronous generator function. Its first iteration is run when
+a session is authenticated and the next when the session is closed. To run the
+first iteration as soon as the session starts, before it's authenticated, pass
+``authenticated_only=False`` to ``add_session_lifespan_handler()``.
 
 .. code-block:: python
 
@@ -76,9 +76,9 @@ iteration as soon as the session starts, before it's authenticated, pass
         app_metrics['activeSessions'] -= 1
 
     app.set_default_arg('app_metrics', {'activeSessions': 0})
-    app.add_session_lifespan(count_session)
+    app.add_session_lifespan_handler(count_session)
 
-Just like RPC and subscription route handlers, the session lifespan can
+Just like RPC and subscription route handlers, the session lifespan handler can
 receive default arguments from the application realm.
 
 Session Data
@@ -87,8 +87,8 @@ Session Data
 At any point in time during the session's lifecycle, custom data that is
 important to your app can be set or retrieved on the session object. The
 current session is available to RPC route handlers, topic route subscription
-handlers, and session lifespans by adding an argument named ``session`` to
-the function signature.
+handlers, and session lifespan handlers by adding an argument named
+``session`` to the function signature.
 
 .. code-block:: python
 

@@ -63,18 +63,19 @@ class CRAAuthRequirement:
 CRARequirementProvider = Callable[[WAMPSession], Awaitable[CRAAuthRequirement]]
 CRAIdentityProvider = Callable[[WAMPSession], Awaitable[Any]]
 
-# Lifespans take any of the session and default args, by parameter name.
-SessionLifespan = Callable[..., AsyncIterator[None]]
+# Lifespan handlers take any of the session and default args, by parameter
+# name.
+SessionLifespanHandler = Callable[..., AsyncIterator[None]]
 
 
 def __getattr__(name):
     if name == 'SessionStateHandler':
         warnings.warn(
-            'SessionStateHandler is deprecated; use SessionLifespan instead.',
+            'SessionStateHandler is deprecated; use SessionLifespanHandler instead.',
             DeprecationWarning,
             stacklevel=2
         )
-        return SessionLifespan
+        return SessionLifespanHandler
     raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
 
@@ -83,8 +84,8 @@ class Realm:
         self.uri = uri
         self.authenticate_session: CoreAuthenticator = self.default_auth_handler
 
-        self.authed_session_lifespans: MutableSequence[SessionLifespan] = []
-        self.session_lifespans: MutableSequence[SessionLifespan] = []
+        self.authed_session_lifespan_handlers: MutableSequence[SessionLifespanHandler] = []
+        self.session_lifespan_handlers: MutableSequence[SessionLifespanHandler] = []
 
         self._rpc_router = RPCRouter()
         self._topic_router = TopicsRouter()
@@ -133,9 +134,9 @@ class Realm:
     ):
         self._authenticate_ticket = authenticator
 
-    def add_session_lifespan(
+    def add_session_lifespan_handler(
         self,
-        lifespan: SessionLifespan,
+        handler: SessionLifespanHandler,
         authenticated_only=True
     ):
         """Adds an async generator function to run over each session's
@@ -144,42 +145,42 @@ class Realm:
         runs when the session ends.
         """
         if authenticated_only:
-            self.authed_session_lifespans.append(lifespan)
+            self.authed_session_lifespan_handlers.append(handler)
         else:
-            self.session_lifespans.append(lifespan)
+            self.session_lifespan_handlers.append(handler)
 
     def add_session_state_handler(
         self,
-        handler: SessionLifespan,
+        handler: SessionLifespanHandler,
         authenticated_only=True
     ):
         warnings.warn(
             'add_session_state_handler() is deprecated; use '
-            'add_session_lifespan() instead.',
+            'add_session_lifespan_handler() instead.',
             DeprecationWarning,
             stacklevel=2
         )
-        self.add_session_lifespan(handler, authenticated_only)
+        self.add_session_lifespan_handler(handler, authenticated_only)
 
     @property
-    def authed_session_state_handlers(self) -> MutableSequence[SessionLifespan]:
+    def authed_session_state_handlers(self) -> MutableSequence[SessionLifespanHandler]:
         warnings.warn(
             'authed_session_state_handlers is deprecated; use '
-            'authed_session_lifespans instead.',
+            'authed_session_lifespan_handlers instead.',
             DeprecationWarning,
             stacklevel=2
         )
-        return self.authed_session_lifespans
+        return self.authed_session_lifespan_handlers
 
     @property
-    def session_state_handlers(self) -> MutableSequence[SessionLifespan]:
+    def session_state_handlers(self) -> MutableSequence[SessionLifespanHandler]:
         warnings.warn(
-            'session_state_handlers is deprecated; use session_lifespans '
+            'session_state_handlers is deprecated; use session_lifespan_handlers '
             'instead.',
             DeprecationWarning,
             stacklevel=2
         )
-        return self.session_lifespans
+        return self.session_lifespan_handlers
 
     def set_default_arg(
         self,
@@ -201,7 +202,7 @@ class Realm:
 
     def _args_for_realm_level_handler(self, handler, **special_params):
         """Used internally by a serverwamp application to determine the args
-        and kwargs to call a configured handler with (e.g. session lifespan).
+        and kwargs to call a configured handler with (e.g. session lifespan handler).
 
         Raises TypeError for a parameter that isn't a special param or default
         arg and has no default value.
@@ -357,9 +358,9 @@ class Application:
         connection = session.connection
         realm: Realm = session.realm
 
-        if realm.session_lifespans:
-            await self._start_session_lifespans(
-                realm.session_lifespans,
+        if realm.session_lifespan_handlers:
+            await self._start_session_lifespan_handlers(
+                realm.session_lifespan_handlers,
                 session
             )
 
@@ -367,9 +368,9 @@ class Application:
         if not session.is_open:
             return False
 
-        if realm.authed_session_lifespans:
-            await self._start_session_lifespans(
-                realm.authed_session_lifespans,
+        if realm.authed_session_lifespan_handlers:
+            await self._start_session_lifespan_handlers(
+                realm.authed_session_lifespan_handlers,
                 session
             )
 
@@ -522,8 +523,8 @@ class Application:
                     pass
                 else:
                     logger.error(
-                        'Session lifespan %s for session %s has more than two '
-                        'iterations or more than one yield.',
+                        'Session lifespan handler %s for session %s has more than '
+                        'two iterations or more than one yield.',
                         lifespan_iter, session.id
                     )
 
@@ -572,17 +573,21 @@ class Application:
     ):
         self._enabled_default_realm.set_ticket_authenticator(authenticator)
 
-    def add_session_lifespan(self, lifespan: SessionLifespan, authenticated_only=True):
-        self._enabled_default_realm.add_session_lifespan(lifespan, authenticated_only)
+    def add_session_lifespan_handler(
+        self,
+        handler: SessionLifespanHandler,
+        authenticated_only=True
+    ):
+        self._enabled_default_realm.add_session_lifespan_handler(handler, authenticated_only)
 
-    def add_session_state_handler(self, handler: SessionLifespan, authenticated_only=True):
+    def add_session_state_handler(self, handler: SessionLifespanHandler, authenticated_only=True):
         warnings.warn(
             'add_session_state_handler() is deprecated; use '
-            'add_session_lifespan() instead.',
+            'add_session_lifespan_handler() instead.',
             DeprecationWarning,
             stacklevel=2
         )
-        self._enabled_default_realm.add_session_lifespan(handler, authenticated_only)
+        self._enabled_default_realm.add_session_lifespan_handler(handler, authenticated_only)
 
     def set_default_arg(
         self,
@@ -598,14 +603,14 @@ class Application:
     def add_topic_routes(self, routes):
         self._enabled_default_realm.add_topic_routes(routes)
 
-    async def _start_session_lifespans(self, lifespans, session):
+    async def _start_session_lifespan_handlers(self, handlers, session):
         async with self._async_support.launch_task_group() as start_tasks:
-            for lifespan in lifespans:
+            for handler in handlers:
                 args, kwargs = session.realm._args_for_realm_level_handler(
-                    lifespan,
+                    handler,
                     session=session
                 )
-                lifespan_iter = lifespan(*args, **kwargs)
+                lifespan_iter = handler(*args, **kwargs)
                 await start_tasks.spawn(advance, lifespan_iter)
                 self._session_lifespan_exits[session].add(lifespan_iter)
 

@@ -1,16 +1,17 @@
 # serverwamp Changelog
 ## Unreleased
-* Rename session state handlers to session lifespans, since they run over a
-session's lifespan rather than handling its state.
-`add_session_state_handler()` is now `add_session_lifespan()` on `Realm` and
-`Application`, `Realm.session_state_handlers` and
-`Realm.authed_session_state_handlers` are now `session_lifespans` and
-`authed_session_lifespans`, and `serverwamp.application.SessionStateHandler`
-is now `SessionLifespan`. The old names still work but are deprecated.
-* Fix session lifespans and subscription handlers getting arguments in the
-wrong parameters when one parameter isn't `session`, `topic_uri` or a default
-arg. Such a parameter now keeps its default value, or raises `TypeError` if it
-has none.
+* Rename session state handlers to session lifespan handlers, since they run
+over a session's lifespan rather than handling its state.
+`add_session_state_handler()` is now `add_session_lifespan_handler()` on `Realm`
+and `Application`, `Realm.session_state_handlers` and
+`Realm.authed_session_state_handlers` are now `session_lifespan_handlers` and
+`authed_session_lifespan_handlers`, and
+`serverwamp.application.SessionStateHandler` is now `SessionLifespanHandler`.
+The old names still work but are deprecated.
+* Fix session lifespan handlers and subscription handlers getting arguments in
+the wrong parameters when one parameter isn't `session`, `topic_uri` or a
+default arg. Such a parameter now keeps its default value, or raises
+`TypeError` if it has none.
 * Require Python 3.11 or newer. `serverwamp.context`, a backport of
 `contextlib.asynccontextmanager` for older Pythons, is removed.
 * Build the asyncio support on `asyncio.TaskGroup`. As with Trio and AnyIO,
@@ -40,9 +41,9 @@ per WAMP spec, instead of `wamp.error.protocol_error`.
 and `WAMPSession.close()` without a reason use `wamp.close.goodbye_and_out`,
 and `Application.close_sessions()` uses `wamp.close.system_shutdown`.
 * End sessions once GOODBYE has been exchanged, instead of when the client
-disconnects. Subscription and session lifespan teardown run then, and the
-client can start a new session on the same connection with HELLO, as the WAMP
-spec allows.
+disconnects. Subscription and session lifespan handler teardown run then, and
+the client can start a new session on the same connection with HELLO, as the
+WAMP spec allows.
   * After the session sends GOODBYE, messages from the client other than its
     GOODBYE in reply are ignored, per WAMP spec.
   * Sending for a session that has ended raises `serverwamp.ConnectionClosed`,
@@ -68,7 +69,7 @@ handled, instead of at garbage collection.
 * Wait for tasks started with `WAMPSession.spawn_task()` while a session ends,
 instead of cancelling them.
 * Fix sessions never being cleaned up with Trio. Teardown after `yield` in
-subscriptions and session lifespans now runs, and ended sessions are no
+subscription and session lifespan handlers now runs, and ended sessions are no
 longer kept in memory.
 * Fix ASGI apps failing on anything other than a WebSocket. HTTP requests are
 answered with 426 Upgrade Required without an error, and lifespan startup and

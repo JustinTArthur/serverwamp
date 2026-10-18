@@ -36,7 +36,7 @@ def build_app(async_support, events):
         events.append('unsubscribed')
 
     realm = serverwamp.Realm(REALM_URI)
-    realm.add_session_lifespan(session_lifespan, authenticated_only=False)
+    realm.add_session_lifespan_handler(session_lifespan, authenticated_only=False)
     realm.add_topic_routes(topics)
     app = serverwamp.Application(allow_default_realm=False,
                                  async_support=async_support)
