@@ -256,9 +256,13 @@ can be served alongside other HTTP or even other WebSocket routes.
 
 ASGI Server WebSockets
 ^^^^^^^^^^^^^^^^^^^^^^
-``Application.asgi_application()`` produces an aiohttp web request
-handler that can be assigned an HTTP route. The route will then serve WAMP
-WebSockets using JSON or MsgPack serializations.
+``Application.asgi_application()`` produces an ASGI application that can be
+run by an ASGI server or mounted in an ASGI framework. It serves WAMP
+WebSockets using JSON or MsgPack serializations on the given paths, or on any
+path if none are given. HTTP requests for those paths are answered with 426
+Upgrade Required. HTTP requests for other paths are answered with 404, and
+WebSockets for them are rejected. For servers that only support the older
+ASGI 2 interface, use ``Application.legacy_asgi_application()`` instead.
 
 .. _serverwamp-getting_started-authentication:
 

@@ -581,15 +581,16 @@ class Application:
         self,
         paths: Collection[str] | None = None
     ):
+        """Returns an ASGI application callable that serves WAMP on the given
+        paths. Other paths will return a 404. If paths is omitted, any path
+        requested by the user agent will serve WAMP sessions.
+        """
         from serverwamp.adapters.asgi import (
             connection_for_asgi_invocation,
             handle_asgi_lifespan,
             handle_asgi_path_not_found,
         )
-        """Returns an ASGI application callable that serves WAMP on the given
-        paths. Other paths will return a 404. If paths is omitted, any path
-        requested by the user agent will serve WAMP sessions.
-        """
+
         async def application_callable(
             scope: Mapping,
             receive: Callable[[], Awaitable[Mapping]],
