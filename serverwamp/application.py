@@ -1,5 +1,6 @@
 import inspect
 import logging
+import warnings
 from collections import defaultdict
 from collections.abc import (
     AsyncIterator,
@@ -62,7 +63,18 @@ class CRAAuthRequirement:
 CRARequirementProvider = Callable[[WAMPSession], Awaitable[CRAAuthRequirement]]
 CRAIdentityProvider = Callable[[WAMPSession], Awaitable[Any]]
 
-SessionStateHandler = Callable[[WAMPSession], AsyncIterator[None]]
+SessionLifespan = Callable[[WAMPSession], AsyncIterator[None]]
+
+
+def __getattr__(name):
+    if name == 'SessionStateHandler':
+        warnings.warn(
+            'SessionStateHandler is deprecated; use SessionLifespan instead.',
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return SessionLifespan
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
 
 class Realm:
@@ -70,8 +82,8 @@ class Realm:
         self.uri = uri
         self.authenticate_session: CoreAuthenticator = self.default_auth_handler
 
-        self.authed_session_state_handlers: MutableSequence[SessionStateHandler] = []
-        self.session_state_handlers: MutableSequence[SessionStateHandler] = []
+        self.authed_session_lifespans: MutableSequence[SessionLifespan] = []
+        self.session_lifespans: MutableSequence[SessionLifespan] = []
 
         self._rpc_router = RPCRouter()
         self._topic_router = TopicsRouter()
@@ -120,15 +132,53 @@ class Realm:
     ):
         self._authenticate_ticket = authenticator
 
-    def add_session_state_handler(
+    def add_session_lifespan(
         self,
-        handler: SessionStateHandler,
+        lifespan: SessionLifespan,
         authenticated_only=True
     ):
+        """Adds an async generator function to run over each session's
+        lifespan. It runs to its ``yield`` when the session starts, or once
+        it's authenticated if ``authenticated_only`` is true, and the rest
+        runs when the session ends.
+        """
         if authenticated_only:
-            self.authed_session_state_handlers.append(handler)
+            self.authed_session_lifespans.append(lifespan)
         else:
-            self.session_state_handlers.append(handler)
+            self.session_lifespans.append(lifespan)
+
+    def add_session_state_handler(
+        self,
+        handler: SessionLifespan,
+        authenticated_only=True
+    ):
+        warnings.warn(
+            'add_session_state_handler() is deprecated; use '
+            'add_session_lifespan() instead.',
+            DeprecationWarning,
+            stacklevel=2
+        )
+        self.add_session_lifespan(handler, authenticated_only)
+
+    @property
+    def authed_session_state_handlers(self) -> MutableSequence[SessionLifespan]:
+        warnings.warn(
+            'authed_session_state_handlers is deprecated; use '
+            'authed_session_lifespans instead.',
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.authed_session_lifespans
+
+    @property
+    def session_state_handlers(self) -> MutableSequence[SessionLifespan]:
+        warnings.warn(
+            'session_state_handlers is deprecated; use session_lifespans '
+            'instead.',
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.session_lifespans
 
     def set_default_arg(
         self,
@@ -150,7 +200,7 @@ class Realm:
 
     def args_for_realm_level_handler(self, handler, **special_params):
         """Used internally by a serverwamp application to determine what args
-        to call a configured handler with (e.g. session state handler)
+        to call a configured handler with (e.g. session lifespan)
         """
         handler_args = []
         for name in inspect.signature(handler).parameters.keys():
@@ -261,7 +311,7 @@ class Application:
         self._subscription_exits: MutableMapping[
             WAMPSession, MutableMapping[int, AsyncIterator]
         ] = defaultdict(dict)
-        self._session_state_exits: MutableMapping[
+        self._session_lifespan_exits: MutableMapping[
             WAMPSession, MutableSet[AsyncIterator]
         ] = defaultdict(set)
 
@@ -281,9 +331,9 @@ class Application:
         connection = session.connection
         realm: Realm = session.realm
 
-        if realm.session_state_handlers:
-            await self._start_session_state_handlers(
-                realm.session_state_handlers,
+        if realm.session_lifespans:
+            await self._start_session_lifespans(
+                realm.session_lifespans,
                 session
             )
 
@@ -291,9 +341,9 @@ class Application:
         if not session.is_open:
             return False
 
-        if realm.authed_session_state_handlers:
-            await self._start_session_state_handlers(
-                realm.authed_session_state_handlers,
+        if realm.authed_session_lifespans:
+            await self._start_session_lifespans(
+                realm.authed_session_lifespans,
                 session
             )
 
@@ -436,19 +486,19 @@ class Application:
                     subscribe_unsubscribe_iter, session.id
                 )
 
-        state_iters = self._session_state_exits.pop(session, EMPTY_SET)
-        if state_iters:
+        lifespan_iters = self._session_lifespan_exits.pop(session, EMPTY_SET)
+        if lifespan_iters:
             # TODO, make exits concurrent
-            for state_iter in state_iters:
+            for lifespan_iter in lifespan_iters:
                 try:
-                    await state_iter.__anext__()
+                    await lifespan_iter.__anext__()
                 except StopAsyncIteration:
                     pass
                 else:
                     logger.error(
-                        'Session state manager %s for session %s has more '
-                        'than two iterations or more than one yield.',
-                        state_iter, session.id
+                        'Session lifespan %s for session %s has more than two '
+                        'iterations or more than one yield.',
+                        lifespan_iter, session.id
                     )
 
     # Default Realm Configuration…
@@ -496,8 +546,17 @@ class Application:
     ):
         self._enabled_default_realm.set_ticket_authenticator(authenticator)
 
-    def add_session_state_handler(self, handler: SessionStateHandler, authenticated_only=True):
-        self._enabled_default_realm.add_session_state_handler(handler, authenticated_only)
+    def add_session_lifespan(self, lifespan: SessionLifespan, authenticated_only=True):
+        self._enabled_default_realm.add_session_lifespan(lifespan, authenticated_only)
+
+    def add_session_state_handler(self, handler: SessionLifespan, authenticated_only=True):
+        warnings.warn(
+            'add_session_state_handler() is deprecated; use '
+            'add_session_lifespan() instead.',
+            DeprecationWarning,
+            stacklevel=2
+        )
+        self._enabled_default_realm.add_session_lifespan(handler, authenticated_only)
 
     def set_default_arg(
         self,
@@ -513,16 +572,16 @@ class Application:
     def add_topic_routes(self, routes):
         self._enabled_default_realm.add_topic_routes(routes)
 
-    async def _start_session_state_handlers(self, handlers, session):
+    async def _start_session_lifespans(self, lifespans, session):
         async with self._async_support.launch_task_group() as start_tasks:
-            for handler in handlers:
+            for lifespan in lifespans:
                 args = session.realm.args_for_realm_level_handler(
-                    handler,
+                    lifespan,
                     session=session
                 )
-                state_iter = handler(*args)
-                await start_tasks.spawn(advance, state_iter)
-                self._session_state_exits[session].add(state_iter)
+                lifespan_iter = lifespan(*args)
+                await start_tasks.spawn(advance, lifespan_iter)
+                self._session_lifespan_exits[session].add(lifespan_iter)
 
     async def default_protocol_subscribe_handler(
         self,

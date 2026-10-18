@@ -18,14 +18,14 @@ pytestmark = pytest.mark.parametrize('async_support, backend', (
 ))
 
 REALM_URI = 'test.realm'
-TORN_DOWN = ['state set up', 'subscribed', 'unsubscribed', 'state torn down']
+TORN_DOWN = ['lifespan started', 'subscribed', 'unsubscribed', 'lifespan ended']
 
 
 def build_app(async_support, events):
-    async def session_state(session):
-        events.append('state set up')
+    async def session_lifespan(session):
+        events.append('lifespan started')
         yield
-        events.append('state torn down')
+        events.append('lifespan ended')
 
     topics = serverwamp.TopicRouteSet()
 
@@ -36,7 +36,7 @@ def build_app(async_support, events):
         events.append('unsubscribed')
 
     realm = serverwamp.Realm(REALM_URI)
-    realm.add_session_state_handler(session_state, authenticated_only=False)
+    realm.add_session_lifespan(session_lifespan, authenticated_only=False)
     realm.add_topic_routes(topics)
     app = serverwamp.Application(allow_default_realm=False,
                                  async_support=async_support)
@@ -54,7 +54,7 @@ async def subscribe(connection):
 def assert_cleaned_up(app):
     assert not app._active_sessions
     assert not app._subscription_exits
-    assert not app._session_state_exits
+    assert not app._session_lifespan_exits
 
 
 @pytest.mark.parametrize('say_goodbye', (False, True))

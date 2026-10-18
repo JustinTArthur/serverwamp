@@ -88,7 +88,9 @@ async def _noop(*args, **kwargs):
     ('add_transport_authenticator', (_noop,)),
     ('set_cra_handlers', (_noop, _noop)),
     ('set_ticket_authenticator', (_noop,)),
-    ('add_session_state_handler', (_noop,)),
+    ('add_session_lifespan', (_noop,)),
+    pytest.param('add_session_state_handler', (_noop,),
+                 marks=pytest.mark.filterwarnings('ignore::DeprecationWarning')),
     ('set_default_arg', ('arg_name', 'value')),
     ('add_rpc_routes', (serverwamp.RPCRouteSet(),)),
     ('add_topic_routes', (serverwamp.TopicRouteSet(),)),
@@ -97,3 +99,25 @@ def test_default_realm_config_without_default_realm(method_name, args):
     app = serverwamp.Application(allow_default_realm=False)
     with pytest.raises(RuntimeError, match='allow_default_realm=False'):
         getattr(app, method_name)(*args)
+
+
+def test_deprecated_session_state_handler_names():
+    realm = serverwamp.Realm('test.realm')
+    with pytest.warns(DeprecationWarning, match='add_session_lifespan'):
+        realm.add_session_state_handler(_noop)
+    with pytest.warns(DeprecationWarning, match='add_session_lifespan'):
+        realm.add_session_state_handler(_noop, authenticated_only=False)
+    with pytest.warns(DeprecationWarning, match='authed_session_lifespans'):
+        assert realm.authed_session_state_handlers == [_noop]
+    with pytest.warns(DeprecationWarning, match='session_lifespans'):
+        assert realm.session_state_handlers == [_noop]
+    assert realm.authed_session_lifespans == realm.session_lifespans == [_noop]
+
+    app = serverwamp.Application()
+    with pytest.warns(DeprecationWarning, match='add_session_lifespan'):
+        app.add_session_state_handler(_noop)
+    assert app._default_realm.authed_session_lifespans == [_noop]
+
+    with pytest.warns(DeprecationWarning, match='SessionLifespan'):
+        from serverwamp.application import SessionStateHandler
+    assert SessionStateHandler is serverwamp.application.SessionLifespan
