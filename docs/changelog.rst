@@ -1,10 +1,10 @@
 Changelog
 =========
 
-.. _serverwamp-changelog-unreleased:
+.. _serverwamp-changelog-2.0.0:
 
-Unreleased
-----------
+2.0.0
+-----
 
 * Rename session state handlers to session lifespan handlers
   (``add_session_lifespan_handler()``, ``SessionLifespanHandler``,
