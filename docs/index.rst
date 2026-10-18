@@ -37,7 +37,6 @@ from a database:
     @docs_events.route('docs.changes')
     async def subscribe_to_doc_changes(session, changes_subscribers):
         changes_subscribers.add(session)
-        session.send_event(args=('Thanks for subscribing!',))
         yield
         changes_subscribers.remove(session)
 
@@ -46,8 +45,12 @@ from a database:
 
         async def watch_for_docs_changes():
             async for event in my_db.watch_changes():
-                for session in app['changes_subscribers']:
-                    await session.send_event(f'Document changed: {event}')
+                # A copy, as sessions can unsubscribe while events are sent.
+                for session in list(app['changes_subscribers']):
+                    await session.send_event(
+                        'docs.changes',
+                        args=(f'Document changed: {event}',)
+                    )
 
         watcher = asyncio.create_task(watch_for_docs_changes())
 
