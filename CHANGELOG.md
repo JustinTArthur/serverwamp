@@ -74,6 +74,8 @@ accepted them with `wamp.2.msgpack.batched`, which the client hadn't offered.
     parameter was named `rpc_request`.
   * Route handlers with keyword-only parameters failed on every call. `*args`
     and `**kwargs` now get the call's leftover arguments.
+  * Callers could override default args. Parameters named for a default arg
+    now always get its value.
 
 ## 1.2.0
 * Fix the default realm never being used. Sessions requesting a realm that

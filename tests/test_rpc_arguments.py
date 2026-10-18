@@ -66,3 +66,17 @@ def test_var_params_without_request_values():
         return returning_args(args, kwargs)
 
     assert call(procedure) == RPCResult(args=((), {}))
+
+
+def test_default_args_not_taken_from_request():
+    async def procedure(db, user_id: int, new_name: str, session):
+        return returning_args(db, user_id, new_name, session)
+
+    expected = RPCResult(args=('server db', 42, 'Ada', 'the session'))
+    default_args = {'db': 'server db'}
+    assert call(procedure, [42, 'Ada'], default_args=default_args) == expected
+    assert call(
+        procedure,
+        kwargs={'db': 'client db', 'user_id': 42, 'new_name': 'Ada'},
+        default_args=default_args
+    ) == expected

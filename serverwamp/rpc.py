@@ -92,8 +92,11 @@ class RPCRouter(URIsRouter):
                 var_kwargs_param = param
                 continue
 
+            # Values the server provides are never taken from the request.
             if name in special_params:
                 value = special_params[name]
+            elif name in self.default_arg_factories:
+                value = self.default_arg_factories[name]()
             else:
                 value_found = False
                 if param.kind in POSITIONAL_PARAM_KINDS:
@@ -106,8 +109,6 @@ class RPCRouter(URIsRouter):
                 if not value_found:
                     if name in request_kwargs:
                         value = request_kwargs.pop(name)
-                    elif name in self.default_arg_factories:
-                        value = self.default_arg_factories[name]()
                     elif param.default is not param.empty:
                         value = param.default
                     else:
