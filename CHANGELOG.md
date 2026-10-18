@@ -10,8 +10,8 @@ and `Application`, `Realm.session_state_handlers` and
 The old names still work but are deprecated.
 * Fix session lifespan handlers and subscription handlers getting arguments in
 the wrong parameters when one parameter isn't `session`, `topic_uri` or a
-default arg. Such a parameter now keeps its default value, or raises
-`TypeError` if it has none.
+default arg. Such a parameter now keeps its default value, or fails the
+handler with a `TypeError` naming it if it has none.
 * Handle errors from subscription and session lifespan handlers instead of
 failing the connection without a reply. All are logged.
   * A subscription handler raising before its `yield` answers the SUBSCRIBE
