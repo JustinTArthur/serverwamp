@@ -48,7 +48,14 @@ Function Call Arguments
 ^^^^^^^^^^^^^^^^^^^^^^^
 The order and name of arguments in the function signature are important.
 The order is used when non-keyword arguments are supplied by the caller and the
-names are used when keyword arguments are supplied.
+names are used when keyword arguments are supplied. Arguments serverwamp fills
+in itself (``request``, ``session``, and default arguments set with
+``set_default_arg()``) are skipped, so the caller's arguments only fill the
+others.
+
+A ``*args`` argument gets the caller's non-keyword arguments that no other
+argument took, and a ``**kwargs`` argument gets the keyword arguments that
+aren't named for another argument.
 
 Type Marshalling
 """"""""""""""""
@@ -70,6 +77,11 @@ arguments passed in from the client.
     @rpc_api.route('storeHighPrecisionTimestamp')
     async def store_timestamp(timestamp: Decimal):
         pass
+
+Arguments that can't be converted to their type hint are answered with a
+``wamp.error.invalid_argument`` error. Only class type hints are converted to,
+so arguments hinted like ``int | None`` are passed as-is. Default values are
+never converted.
 
 Without type hints, arguments are injected as they were parsed by the
 deserializer (e.g. float for JSON Number).
