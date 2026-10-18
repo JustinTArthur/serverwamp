@@ -234,10 +234,11 @@ and the subscription still ends.
 .. code-block:: python
 
     events = serverwamp.TopicRouteSet()
+    my_subscribers = set()
 
 
-    @events.topic('hourly_updates')
-    async def subscribe_to_hourly_updates(topic, session, my_subscribers):
+    @events.route('hourly_updates')
+    async def subscribe_to_hourly_updates(session, my_subscribers):
         # On subscribe…
         my_subscribers.add(session)
 
@@ -249,16 +250,18 @@ and the subscription still ends.
 
     async def run_hourly_updates():
         while True:
-            for session in self._to_update():
-                session.send_event(
+            # A copy, as sessions can unsubscribe while events are sent.
+            for session in list(my_subscribers):
+                await session.send_event(
+                    'hourly_updates',
                     args=(f'The hour is {datetime.now():%H}',)
                 )
             await asyncio.sleep(60.0)
 
-    app.add_topics(events)
-    app.add_default_arg('my_subscribers', set())
+    app.add_topic_routes(events)
+    app.set_default_arg('my_subscribers', my_subscribers)
 
-    asyncio.create_task(run_hourly_updates)
+    asyncio.create_task(run_hourly_updates())
 
 Serving Connections
 -------------------
