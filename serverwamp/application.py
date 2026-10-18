@@ -63,7 +63,8 @@ class CRAAuthRequirement:
 CRARequirementProvider = Callable[[WAMPSession], Awaitable[CRAAuthRequirement]]
 CRAIdentityProvider = Callable[[WAMPSession], Awaitable[Any]]
 
-SessionLifespan = Callable[[WAMPSession], AsyncIterator[None]]
+# Lifespans take any of the session and default args, by parameter name.
+SessionLifespan = Callable[..., AsyncIterator[None]]
 
 
 def __getattr__(name):
