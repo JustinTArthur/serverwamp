@@ -84,6 +84,7 @@ from a database:
    getting_started
    advanced_usage
    compared_to_traditional_wamp
+   changelog
 
 
 
