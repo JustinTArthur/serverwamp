@@ -1,26 +1,17 @@
 # serverwamp Changelog
 ## Unreleased
-* Rename session state handlers to session lifespan handlers, since they run
-over a session's lifespan rather than handling its state.
-`add_session_state_handler()` is now `add_session_lifespan_handler()` on `Realm`
-and `Application`, `Realm.session_state_handlers` and
-`Realm.authed_session_state_handlers` are now `session_lifespan_handlers` and
-`authed_session_lifespan_handlers`, and
-`serverwamp.application.SessionStateHandler` is now `SessionLifespanHandler`.
-The old names still work but are deprecated.
-* Fix session lifespan handlers and subscription handlers getting arguments in
-the wrong parameters when one parameter isn't `session`, `topic_uri` or a
-default arg. Such a parameter now keeps its default value, or fails the
-handler with a `TypeError` naming it if it has none.
-* Handle errors from subscription and session lifespan handlers instead of
-failing the connection without a reply. All are logged.
-  * A subscription handler raising before its `yield` answers the SUBSCRIBE
-    with `wamp.error.runtime_error`, and the session carries on.
-  * A session lifespan handler raising before its `yield`, or not yielding,
-    ends the session with `wamp.error.runtime_error`: with ABORT before
-    WELCOME, or GOODBYE after. The other lifespan handlers that started are
-    torn down.
-  * Errors after the `yield` no longer stop the session's other teardown.
+* Rename session state handlers to session lifespan handlers
+(`add_session_lifespan_handler()`, `SessionLifespanHandler`,
+`Realm.session_lifespan_handlers` and `authed_session_lifespan_handlers`). The
+old names are deprecated.
+* Fix session lifespan and subscription handlers getting arguments in the
+wrong parameters when one isn't `session`, a default arg, or a subscription
+handler's `topic_uri`. Such a parameter now keeps its default value, or the
+handler fails with a `TypeError` naming it.
+* Answer subscription handler errors with `wamp.error.runtime_error`, and end
+sessions whose session lifespan handlers fail to start with that reason,
+instead of failing the connection without a reply. Errors are logged, and no
+longer stop other teardown.
 * Require Python 3.11 or newer. `serverwamp.context`, a backport of
 `contextlib.asynccontextmanager` for older Pythons, is removed.
 * Build the asyncio support on `asyncio.TaskGroup`. As with Trio and AnyIO,
