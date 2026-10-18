@@ -261,7 +261,9 @@ def _converted(name, value, annotation):
         return value
     try:
         return annotation(value)
-    except (TypeError, ValueError) as e:
+    # ArithmeticError covers the likes of Decimal's InvalidOperation and int()'s
+    # OverflowError for infinity.
+    except (TypeError, ValueError, ArithmeticError) as e:
         raise _InvalidArgument(
             f'Argument {name} is not a valid {annotation.__name__}.'
         ) from e

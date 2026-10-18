@@ -1,4 +1,5 @@
 import asyncio
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -100,12 +101,21 @@ def invalid_argument(message):
     ([1, 'x'], {}, 'Argument scores is not a valid float.'),
     ([1], {'color': 'x'}, 'Argument color is not a valid int.'),
     ([[1]], {}, 'Argument user_id is not a valid int.'),
+    ([float('inf')], {}, 'Argument user_id is not a valid int.'),
 ))
 def test_unconvertible_args_are_invalid(args, kwargs, message):
     async def procedure(user_id: int, *scores: float, **options: int):
         raise AssertionError('Called with an invalid argument.')
 
     assert call(procedure, args, kwargs) == invalid_argument(message)
+
+
+def test_decimal_params():
+    async def procedure(timestamp: Decimal):
+        return returning_args(str(timestamp))
+
+    assert call(procedure, ['1.5']) == RPCResult(args=('1.5',))
+    assert call(procedure, ['x']) == invalid_argument('Argument timestamp is not a valid Decimal.')
 
 
 def test_param_defaults_not_converted():
