@@ -57,7 +57,9 @@ Custom behavior can be run when a session is opened or closed by adding session
 lifespans to the application with ``add_session_lifespan()``. A session
 lifespan returns an asynchronous iterator, and is most easily written as an
 asynchronous generator function. Its first iteration is run when a session is
-started and the next when the session is closed.
+authenticated and the next when the session is closed. To run the first
+iteration as soon as the session starts, before it's authenticated, pass
+``authenticated_only=False`` to ``add_session_lifespan()``.
 
 .. code-block:: python
 
